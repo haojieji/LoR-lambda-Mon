@@ -1,0 +1,698 @@
+% LoRlambda: Low-overhead and Robust QoS Metrics Monitoring based on Sparse Causal Structure
+% Training: SparseCausalDiscovery + AverageCausalEffect
+% Robust Data Model = X_nomral + X_anomalies
+% Model layer: Low-rank model, Lambda model
+% Testing:
+%  Low-rank model for Efficient Monitoring:
+%    1.1 Updating window
+%    1.2 Low-rank sampling
+%    1.3 Causal matrix completion: causal metric, effect metric.
+%  Lambda model for Online Anomaly Monitoring:
+%    2.1 Learning phase
+%    2.2 Low-Rank + lambda-based sampling method
+%    2.3 Updating phase
+
+% Test run
+% 1.
+T = 100;
+w = 23;
+w_size = 2201;
+
+% 2.
+param = {};
+param.theta_r=5e-6;
+param.theta_c=1e-1;
+param.yita=1e-6;
+param.thr_ACE = 0.1;
+param.beta = 2;
+param.als_max_iter = 1000;
+param.als_tol = 0.001;
+param.epsilon_delta = 2.7;
+param.epsilon_gamma = 0.2;
+param.SPIKE_LIMIT = 0.92;
+param.DIP_LIMIT = 0.08;
+% 3.run
+[X_e_hat,X_e_hat_normal, Omega,Omega_r,Omega_L,Omega_e,Omega_r_e,Omega_L_e, r_ranks, r_estimators, r_iscomplete, r_IDX_groups, r_numClusters, r_B, r_Ord, eigns, IDX_root, IDX_intermedia, r_incomplete_batchs, Omega_Cauchy_spike, Omega_Cauchy_dip,Omega_Anomalies,Omega_Anomalies_e, Lambda,Lambda_normalize, OAM_mu, OAM_A, OAM_beta, Labels_Anomalies_X_hat, Times_sample] = localMon(X,X_e, w,w_size, T, param, columnIDX, columnNames);
+% 4.evaluation
+[M, N] =size(X_e);
+num_batch = floor(N/T);
+
+% 采样率
+test_range = w_size*T+1:num_batch*T;
+Omega_all = double(Omega_e |  Omega_Anomalies_e);
+perf_sampleratio = sum(sum(Omega_all(:, test_range))) / ((num_batch-w_size)*T*M);
+perf_sampleratios = zeros(1,M);
+perf_sampleratios_normal = zeros(1,M);
+perf_sampleratios_normal_r = zeros(1,M);
+perf_sampleratios_normal_L = zeros(1,M);
+% NMAE
+perf_NMAEs = zeros(1,M);
+for i=1:M
+    perf_NMAEs(i)=sum(abs(X_e_hat(i,test_range)-X_e(i,test_range)))/sum(abs(X_e(i,test_range)));
+    perf_sampleratios(i) = length(find(Omega_all(i,test_range)==1)) / ((num_batch-w_size)*T);
+    perf_sampleratios_normal(i) = length(find(Omega_e(i,test_range)==1)) / ((num_batch-w_size)*T);
+    perf_sampleratios_normal_r(i) = length(find(Omega_r_e(i,test_range)==1)) / ((num_batch-w_size)*T);
+    perf_sampleratios_normal_L(i) = length(find(Omega_L_e(i,test_range)==1)) / ((num_batch-w_size)*T);
+end
+perf_NMAE = mean(perf_NMAEs);
+
+X_hat = X;
+X_hat_normal = X;
+X_hat(:,w*T+1:end) = X_e_hat(:,w_size*T+1:end);
+X_hat_normal(:,w*T+1:end) = X_e_hat_normal(:,w_size*T+1:end);
+
+%  by thresh and Labels
+[perf_Precisions, perf_Recalls, perf_Precision, perf_Recall, perf_Precision2, perf_Recall2, perf_label_anomalies, perf_F1,perf_F1_2] = get_perf_OAM_precision_recall(X_hat, Labels_anomalies_X, M,w,T);
+
+
+freqs_base = zeros(M, num_batch-w_size+w);
+for i = 1:(num_batch-w_size+w)
+    for j = 1:M
+        freqs_base(j, i) = sum(sum(Omega(j, (i-1)*T+1:i*T )));
+    end
+end
+Omega_all = double( Omega | Omega_Anomalies );
+freqs_all = zeros(M, num_batch-w_size+w);
+for i = 1:(num_batch-w_size+w)
+    for j = 1:M
+        freqs_all(j, i) = sum(sum(Omega_all(j, (i-1)*T+1:i*T )));
+    end
+end
+
+time_sample_permetric = mean(Times_sample(Times_sample~=0));
+% Input:
+%       X = M × N, M  is the number of metrics, N is the number of time steps
+%       w: the original window size
+%       X_e = M × ( w_size * T + (num_batch-w_size)*T ), enhanced X.
+%       w_size: enhanced window size,  w_size = wT-T+1.
+%       T: the batch size
+% Parameter:
+%       W: Window data, M × w_size*T
+%       Clustering Structure:
+%       B: self-expressive matrix M × M
+%       k: Cluster Number
+%       IDX_i: indexes of cluster i
+%       Causal Structure:
+%       B_i: causal adjacent matrix, M_i × M_i
+% Output:
+%       X_hat_t: recovered data at batch t
+%       Omega_t, X_Omega_t: sampled data at batch t
+%       f: frequecy at batch t
+%       B: Clustering Structure at batch t
+%       B_i: Causal Adjacent Matrix at batch t
+function [X_e_hat,X_e_hat_normal, Omega,Omega_r,Omega_L,Omega_e,Omega_r_e,Omega_L_e, r_ranks, r_estimators, r_iscomplete, IDX_groups, numClusters, B, Ord, eigns, IDX_root, IDX_intermedia, r_incomplete_batchs, Omega_Cauchy_spike, Omega_Cauchy_dip,Omega_Anomalies,Omega_Anomalies_e, Lambda,Lambda_normalize, OAM_mu, OAM_A, OAM_beta, Labels_Anomalies_X_hat, Times_sample] = localMon(X,X_e, w,w_size, T, param, columnIDX, columnNames)
+[M, N] = size(X_e);
+num_batch = floor(N/T);
+W = [];
+W_idx = [];
+
+% Subspace of each metric
+U_W = zeros(T,w_size,M); 
+U_W_idx = zeros(M, w_size); 
+U_W_basis = zeros(T,w_size,M);
+U_W_basis_idx = zeros(M,w_size);
+ranks = zeros(1,M);
+U_W_union = []; 
+U_W_union_idx = [];
+
+beta_count = 0;
+incomplete_batch = 0;
+
+% Cauchy CDF-based Anomaly Detection
+Cauchy_MEDIANs = zeros(1, M);
+Cauchy_MADs = zeros(1, M);
+Cauchy_Trans = @(x, m) (x >= m) .* x + ...
+                       (x < m) .* ( (2*m/pi) .* tan( (pi*(x - m))./(2*m + eps) ) + m ); 
+% Return results
+X_e_hat = zeros(M,N);
+X_e_hat_normal = zeros(M,N);
+Omega_e = zeros(M,N);
+Omega_r_e = zeros(M,N);
+Omega_L_e = zeros(M,N);
+Omega_Cauchy_spike_e = zeros(M,N);
+Omega_Cauchy_dip_e = zeros(M,N);
+Omega_Anomalies_e = zeros(M,N);
+Omega = zeros(size(X));
+Omega_r = zeros(size(X));
+Omega_L = zeros(size(X));
+Omega_Cauchy_spike = zeros(size(X));
+Omega_Cauchy_dip = zeros(size(X));
+Omega_Anomalies = zeros(size(X));
+Labels_Anomalies_X_hat = zeros(size(X));
+
+% OnlineAnomalyMonitoring----lambda model
+%     OAM_mu=[];OAM_A=[];OAM_beta=[];
+%     S_mu=[];S_A=[];S_beta=[];
+OAM_max_iter = 100;
+OAM_epsilon = 1e-3;
+Lambda = zeros(size(X)); 
+Lambda_normalize = zeros(size(X)); 
+events = cell(M,1);
+
+r_ranks = zeros(M, num_batch);
+
+r_estimators = zeros(M, num_batch);
+
+r_iscomplete = zeros(M, num_batch);
+r_incomplete_batchs = zeros(1, num_batch);
+
+Times_sample = zeros(1,num_batch);
+for t = 1:num_batch
+    t
+    W_idx = [W_idx t];
+    % Training Stage
+    if t<=w_size
+        X_t = X_e(:,(t-1)*T+1 : t*T);
+        W(:,(t-1)*T+1 : t*T) = X_t;
+        U_W(:,t,:) = X_t';
+        U_W_idx(:,t) = ones(M,1)*t;
+        U_W_union(:,t,:) = X_t';
+        U_W_union_idx(t) = t;
+        X_e_hat(:, (t-1)*T+1 : t*T) = X_t;
+        Omega_e(:, (t-1)*T+1 : t*T) = 1;
+        for i = 1:M
+            r_i = ranks(i);
+            U_W_basis_i = U_W_basis(:,1:r_i,i);
+            X_t_i = X_t(i,:)';
+            P_UWbasis_i = U_W_basis_i * pinv(U_W_basis_i);
+            estimator = (norm(X_t_i - P_UWbasis_i * X_t_i)^2) / (norm(X_t_i)^2+eps);
+            r_estimators(i,t) = estimator;
+            estimator
+            if estimator > param.yita
+                r_i = r_i + 1;
+                U_W_basis(:, r_i, i) = X_t_i;
+                U_W_basis_idx(i,r_i) = t;
+                ranks(i) = r_i;
+            end
+        end
+
+        if t==w_size
+            % Structure：
+            X_train = X(:,1:w*T);
+            [IDX_groups, numClusters, eigns,~] = subfunc_clustering_by_SSC(X_train);
+            [B, Stru, Ord, IDX_root, IDX_intermedia] = subfunc_CausalStructureLearning(IDX_groups, numClusters, X_train, param.thr_ACE);
+
+            % Model：
+            [W, U_W, Omega_Cauchy_spike_e, Omega_Cauchy_dip_e, Cauchy_MEDIANs, Cauchy_MADs] = subfunc_robust_AnomalyDetect_Cauchy(W, U_W, param.SPIKE_LIMIT, param.DIP_LIMIT, Omega_Cauchy_spike_e, Omega_Cauchy_dip_e, Cauchy_Trans);
+            U_W_union = U_W;
+            Omega_Anomalies_e = double(Omega_Cauchy_spike_e | Omega_Cauchy_dip_e);
+            Omega_e = Omega_e - Omega_Anomalies_e;
+            X_e_hat_normal(:,1:w_size*T) = W;
+
+            [X_train, Omega_Cauchy_spike, Omega_Cauchy_dip, Cauchy_MEDIANs, Cauchy_MADs, ~] = subfunc_robust_AnomalyDetect_Cauchy_w(X_train, param.SPIKE_LIMIT, param.DIP_LIMIT, Omega_Cauchy_spike, Omega_Cauchy_dip, Cauchy_Trans);
+            Omega(:,1:w*T) = 1;
+            Omega_Anomalies = double(Omega_Cauchy_spike | Omega_Cauchy_dip);
+
+            % 2.1 Learning MBP model from training anamolaes data
+            [OAM_mu, OAM_A, OAM_beta,S_mu,S_A,S_beta, events, Par] = subfunc_robust_OAM_learn_mbp(Omega_Anomalies, w*T, M, OAM_max_iter, OAM_epsilon, Stru);
+            for i = 1:M
+                for j = 1:w*T
+                    % lambda_i(j)
+                    lambda_i_j = OAM_mu(i);
+                    for m_prime = Par{i}
+                        past_events = events{m_prime}(events{m_prime}<=j);
+                        if ~isempty(past_events)
+                            dt = j-past_events;
+                            contrib = OAM_A(i, m_prime) * OAM_beta(i, m_prime) * exp(-OAM_beta(i, m_prime)*dt);
+                            lambda_i_j = lambda_i_j + sum(contrib);
+                        end
+                    end
+                    Lambda(i,j) = lambda_i_j;
+                end
+                Lambda_normalize(i,1:w*T) = Lambda(i,1:w*T)./max(Lambda(i,1:w*T));
+            end
+
+            % visualize：
+            rank_M = 1; 
+            U_M = [];
+            U_M(:,1) = X_train(1,:)';
+            for i = 2:M
+                W_i = X_train(i,:)';
+                res_i = (norm(W_i - U_M * pinv(U_M) * W_i)^2) / (norm(W_i)^2 + eps);
+                if res_i > param.yita
+                    U_M(:,end+1) = W_i;
+                    rank_M = rank_M +1;
+                end
+            end
+            rank_M_svd = rank(X_train');
+            figure;
+            for i = 1:numClusters
+                IDX_i = find(IDX_groups==i);
+                numMetrics_i = length(IDX_i);
+                Ord_i = Ord(i, 1:numMetrics_i);
+                B_i = B(Ord_i, Ord_i);
+                columnNameIDX = columnIDX(Ord_i);
+                
+                subplot(2, ceil(numClusters/2), i);
+                G = digraph(B_i');
+                h=plot(G, 'Layout', 'layered', 'NodeLabel', columnNames(columnNameIDX), 'ArrowSize', 12, 'LineWidth', 1.5, 'NodeColor', [0.2 0.6 1]);
+                title(['因果图 of cluster ', num2str(i)])
+                ranks_Ord = ranks(Ord_i); % 时间秩
+                rank_causal = 0; % 因果秩
+                for j = 1:size(B_i,1)
+                    rank_causal = max(rank_causal, length(find(B_i(j,:)>0)));
+                end
+                ranks_Ord_str = strjoin(string(ranks_Ord), ', ');
+                legend_text = sprintf('causal rank=%d, temporal ranks=[%s], whole rank=%d, svd rank=%d', rank_causal, ranks_Ord_str, rank_M, rank_M_svd);
+                
+                % 关联 legend 到图形对象 h
+                legend(h, legend_text, 'Location', 'best');
+            end
+            figure;
+            for i = 1:numClusters
+                IDX_i = find(IDX_groups==i);
+                numMetrics_i = length(IDX_i);
+                Ord_i = Ord(i, 1:numMetrics_i);
+                B_i = B(Ord_i, Ord_i);
+                
+                subplot(2, ceil(numClusters/2), i);
+                heatmap(B_i, 'XLabel', '父节点', 'YLabel', '子节点', 'Title', '因果邻接矩阵{i}');
+                colormap jet;
+                colorbar;
+            end
+        end
+        r_iscomplete(:,t) = 1;
+    else
+        % Testing Stage
+        X_t = X_e(:, (t-1)*T+1 : t*T);
+        % step1. update Window data W, W_idx, U_W, U_W_idx, B
+        % Update W: 入1个时间, 出1个时间
+        idx_oldest = W_idx(1);
+        W_idx = W_idx(2:end); % 出1
+        W(:, (size(W,2)+1):(size(W,2)+T) ) = X_t; % 入1
+        W = W(:, T+1:end); % 出1
+        % Update U_W:
+        for i = 1:M
+            temp = length( find(U_W_idx(i,:)~=0) );
+            if temp > 0
+                if idx_oldest == U_W_idx(i,1) % U_W中的数据被移除时，更新U_W
+                    X_oldest_i = U_W(:,1,i);
+                    U_W(:,1:temp-1,i) = U_W(:,2:temp,i);
+                    U_W(:,temp,i) = 0;
+                    U_W_idx(i,1:temp-1) = U_W_idx(i,2:temp);
+                    U_W_idx(i,temp:w_size) = 0;
+
+                    U_W_i = U_W(:,1:temp-1,i);
+                    P_UW = U_W_i*pinv(U_W_i);
+                    estimator = (norm(X_oldest_i - P_UW*X_oldest_i)^2) / (norm(X_oldest_i)^2+eps);
+                    r_estimators(i,t) = estimator;
+                    if estimator > param.yita
+                        ranks(i) = ranks(i) - 1;
+                    end
+                end
+            end
+        end
+
+        ranks = ranks + 1;
+        
+        Time_sample_t = 0;
+        
+        % step2. assume cluster and causal structure is stable
+        Omega_t = zeros(M, T);
+        Omega_t_r = zeros(M, T);
+        Omega_t_L = zeros(M, T);
+        X_t_omega = zeros(M, T);
+        X_e_hat_t = zeros(M, T);
+        X_e_hat_t_normal = zeros(M, T);
+
+        Anomalies_t_omega = zeros(M, T);
+        new_events = cell(M,1);
+
+        % ****************************************增加子空间特征***************************************
+        if incomplete_batch > 0
+            % 全采样
+            Omega_t = ones(M, T);
+            X_e_hat_t = X_t;
+            X_e_hat_t_normal = X_t;
+            beta_count = beta_count+1;
+            % 更新子空间U_W
+            for i = 1:M
+                temp = length(find(U_W_idx(i,:)~=0));
+                U_W_i = U_W(:,1:temp,i);
+                X_t_i = X_t(i,:)';
+                P_UW_i = U_W_i * pinv(U_W_i);
+                estimator = (norm(X_t_i - P_UW_i * X_t_i)^2) / (norm(X_t_i)^2+eps);
+                r_estimators(i,t) = estimator;
+                if estimator > param.yita
+                    ranks(i) = ranks(i) + 1;
+                end
+                U_W(:,temp+1,i) = X_t_i;
+                U_W_idx(i,temp+1) = t;
+            end
+            % s1 更新子空间U_W_Union
+            U_W_union(:,size(U_W_union,2)+1,:) = X_t';
+            temp = length(U_W_union_idx);
+            U_W_union_idx(temp+1) = t;
+            r_iscomplete(:,t) = 1;
+
+            X_e_hat(:, (t-1)*T+1 : t*T) = X_e_hat_t;
+            if beta_count == param.beta || t == num_batch
+
+                % 更新Cauchy-->检测异常-->更新events-->更新U_W
+                [W, U_W_union, ~, ~, Cauchy_MEDIANs,Cauchy_MADs,events,new_events,Omega_Cauchy] = subfunc_robust_AnomalyDetect_Cauchy_Xt_w(W, U_W_union, U_W_union_idx, beta_count, param.SPIKE_LIMIT, param.DIP_LIMIT, Cauchy_MEDIANs, Cauchy_MADs, Cauchy_Trans, T,t,w_size,w, events,new_events, Omega_e,Omega_Anomalies_e,X_e_hat, W_idx);
+
+                X_e_hat_normal(:,(t-beta_count)*T:t*T) = W(:,(length(W_idx)-beta_count)*T:length(W_idx)*T);
+                
+                Omega_Anomalies_e(:,(t-beta_count)*T+1:t*T) = Omega_Cauchy;
+                Omega_Anomalies(:,(t-beta_count-w_size+w)*T+1:(t-w_size+w)*T) = Omega_Cauchy;                
+                Omega_t_r = ones(M, beta_count*T);
+                Omega_t_r(Omega_Cauchy==1) = 0;
+                Omega_r_e(:,(t-beta_count)*T+1:t*T) = Omega_t_r;
+                Omega_L_e(:,(t-beta_count)*T+1:t*T) = Omega_t_r;
+                Omega_r(:,(t-beta_count-w_size+w)*T+1:(t-w_size+w)*T) = Omega_t_r;
+                Omega_L(:,(t-beta_count-w_size+w)*T+1:(t-w_size+w)*T) = Omega_t_r;
+
+                % s2 如果根指标，则恢复根指标，再恢复效应指标
+                IDX_unrecover = find(r_iscomplete(:,incomplete_batch)==0)';
+                if ~isempty(IDX_unrecover)
+                    IDX_root_unrecover = [];
+                    for ic = 1:numClusters
+                        temp = length(find(IDX_root(ic,:)~=0));
+                        IDX_root_ic = IDX_root(ic, 1:temp);
+                        IDX_root_unrecover = [IDX_root_unrecover intersect(IDX_unrecover, IDX_root_ic)];
+                    end
+                    IDX_other_unrecover = setdiff(IDX_unrecover, IDX_root_unrecover);
+
+                    for iru = IDX_root_unrecover
+                        % 使用U_W_union恢复IDX_root
+                        Omega_iru = Omega_e(iru, (incomplete_batch-1)*T+1:incomplete_batch*T);
+                        Omega_iru_idx = find(Omega_iru==1);
+                        Omega_iru_anomalies = Omega_Anomalies_e(iru, (incomplete_batch-1)*T+1:incomplete_batch*T);
+                        Omega_iru_anomalies_idx = find(Omega_iru_anomalies==1);
+
+                        %Omega_iru_idx = unique([Omega_iru_idx, Omega_iru_anomalies_idx]); % 不分离
+
+                        X_e_hat_iru = X_e_hat(iru, (incomplete_batch-1)*T+1:incomplete_batch*T)';
+                        X_e_hat_iru_omega = X_e_hat_iru(Omega_iru_idx);
+                        X_e_hat_iru_omega_anomalies = X_e_hat_iru(Omega_iru_anomalies_idx);
+
+                        enhanced_columns = subfunc_enhance_U(U_W_union(:,end-beta_count+1:end,iru), U_W_union_idx(end-beta_count+1:end)); %增强子空间
+                        U_W_union_iru = [U_W_union(:,1:end-beta_count,iru) enhanced_columns];
+                        X_e_hat_iru = U_W_union_iru*pinv(U_W_union_iru(Omega_iru_idx,:))*X_e_hat_iru_omega;
+
+                        X_e_hat_iru(Omega_iru_idx,1) = X_e_hat_iru_omega;
+                        X_e_hat_normal(iru, (incomplete_batch-1)*T+1:incomplete_batch*T) = X_e_hat_iru';
+                        X_e_hat_iru(Omega_iru_anomalies_idx,1) = X_e_hat_iru_omega_anomalies;
+                        X_e_hat(iru, (incomplete_batch-1)*T+1:incomplete_batch*T) = X_e_hat_iru';
+
+                        r_iscomplete(iru, incomplete_batch) = 1;
+                    end
+                    for iou = IDX_other_unrecover
+                        % 恢复效应指标-------------------------
+                        % 构建父节点的空间，恢复该效应节点
+                        IDX_j_parent = find(B(iou,:)~=0);
+                        U_W_j_parent = X_e_hat(IDX_j_parent, (incomplete_batch-1)*T+1:incomplete_batch*T)';
+                        %U_W_j_parent = [];
+                        % 增强因果父空间
+                        for j_par = IDX_j_parent
+                            temp = length(U_W_union_idx);
+                            U_W_j_par = U_W_union(:,1:temp,j_par);
+                            %U_W_j_par = subfunc_enhance_U(U_W_j_par, U_W_union_idx); %增强子空间
+                            U_W_j_parent = [U_W_j_parent U_W_j_par];
+                        end
+                        % 历史子空间
+                        %U_W_union_iou = subfunc_enhance_U(U_W_union(:,:,iou), U_W_union_idx); %增强子空间
+                        U_W_union_iou = U_W_union(:,:,iou);
+
+                        Omega_iou = Omega_e(iou, (incomplete_batch-1)*T+1:incomplete_batch*T);
+                        Omega_iou_idx = find(Omega_iou==1);
+                        Omega_iou_anomalies = Omega_Anomalies_e(iou, (incomplete_batch-1)*T+1:incomplete_batch*T);
+                        Omega_iou_anomalies_idx = find(Omega_iou_anomalies==1);
+
+                        %Omega_iou_idx = unique([Omega_iou_idx, Omega_iou_anomalies_idx]);
+
+                        X_e_hat_iou = X_e_hat(iou, (incomplete_batch-1)*T+1:incomplete_batch*T)';
+                        X_e_hat_iou_omega = X_e_hat_iou(Omega_iou_idx);
+                        X_e_hat_iou_omega_anomalies = X_e_hat_iou(Omega_iou_anomalies_idx);
+
+                        U_W_j_parent_omega = U_W_j_parent(Omega_iou_idx,:);
+                        U_W_union_iou_omega = U_W_union_iou(Omega_iou_idx,:);
+
+                        [alpha_cau, alpha_his] = subfunc_inferEffect_ALS(X_e_hat_iou_omega, U_W_j_parent_omega, U_W_union_iou_omega, param.als_max_iter, param.als_tol);
+                        X_e_hat_iou = U_W_j_parent*alpha_cau + U_W_union_iou*alpha_his;
+                        X_e_hat_iou(Omega_iou_idx) = X_e_hat_iou_omega;
+                        X_e_hat_normal(iou, (incomplete_batch-1)*T+1:incomplete_batch*T) = X_e_hat_iou';
+                        X_e_hat_iou(Omega_iou_anomalies_idx) = X_e_hat_iou_omega_anomalies;
+                        X_e_hat(iou, (incomplete_batch-1)*T+1:incomplete_batch*T) = X_e_hat_iou';
+
+                        r_iscomplete(iou, incomplete_batch) = 1;
+                    end
+                end
+                % s4 如果都成功恢复，则
+                if r_iscomplete(:, incomplete_batch)
+                    disp(["OK", incomplete_batch]);
+                end
+
+                % 2.3 Updating phase for new batch : update (OAM_A,OAM_mu,OAM_beta) by new events
+                [OAM_mu,OAM_A,OAM_beta, S_mu,S_A,S_beta] = subfunc_robust_OAM_update_mbp(OAM_mu,OAM_A,OAM_beta, events, new_events, w,T, M, OAM_max_iter, OAM_epsilon, S_mu,S_A,S_beta, Par, W_idx);
+                for i = 1:M
+                    for j = (t-w_size+w-beta_count)*T+1:(t-w_size+w)*T
+                        % lambda_i(j)
+                        lambda_i_j = OAM_mu(i);
+                        for m_prime = Par{i}
+                            past_events = events{m_prime}(events{m_prime}<=j);
+                            if ~isempty(past_events)
+                                dt = j-past_events;
+                                contrib = OAM_A(i, m_prime) * OAM_beta(i, m_prime) * exp(-OAM_beta(i, m_prime)*dt);
+                                lambda_i_j = lambda_i_j + sum(contrib);
+                            end
+                        end
+                        Lambda(i,j) = lambda_i_j;
+                    end
+                    Lambda_normalize(i,(t-w_size+w-beta_count)*T+1:(t-w_size+w)*T) = Lambda(i,(t-w_size+w-beta_count)*T+1:(t-w_size+w)*T)./max(Lambda(i,:));
+                end
+
+                incomplete_batch = 0;
+                beta_count = 0;
+            end
+        else
+            % *******************************************************************************************
+            % 部分采样情况----------因果结构稳定，根因指标稳定
+            for i = 1:numClusters
+
+                % step3. find root metrics
+                IDX_i = find(IDX_groups==i); % 类内的指标索引
+                Ord_i = Ord(i, 1:length(IDX_i)); % 类内指标的因果顺序
+                B_i = B(Ord_i, Ord_i);
+                Stru_i = Stru(Ord_i, Ord_i);
+                num_root_i = length( find(IDX_root(i,:) ~= 0) );
+                IDX_root_i = IDX_root(i, 1:num_root_i);
+                IDX_other_i = Ord_i(~ismember(Ord_i, IDX_root_i));
+
+                time_sample = tic;
+                % step4. calculate frequency of root metrics
+                for j = 1:size(B_i,1)
+                    j_ord_idx = Ord_i(j); %原始空间的变量索引
+
+                    if ismember(j_ord_idx, IDX_root_i)
+                        % root metric rank
+                        r_j = ranks(j_ord_idx);
+                        numSamples_j = max(param.theta_r*r_j*log(r_j), 1);
+                    else
+                        % child metric rank
+                        j_parent_idx = Ord_i(B_i(j,:) ~=0);
+                        r_j = length(j_parent_idx);
+                        numSamples_j = max(param.theta_c*r_j*log(r_j), 1);
+                    end
+                    numSamples_j
+                    % 2.2 Low-rank Lambda frequency sampling:
+                    % sample metric by f_j and lambda_m(t)
+                    % update lambda_m(t) by parents' anomalies
+                    % detect anomalies， cauchy CDF
+                    % update lambda_m(t) by its new anomalies
+                    % Omega_t_j_ord_idx 正常数据索引; Anomalies_t_omega 异常数据索引
+                    % 计算lambda时，注意窗口W_idx,W的大小，此时的滑动窗口机制是进入T列，移除1列.
+                    [Omega_t_j_ord_idx, Omega_t_j_ord_idx_r,Omega_t_j_ord_idx_L, Anomalies_t_omega_j_ord_idx, Omega_Anomalies_e, events, new_events, Lambda,Lambda_normalize] = subfunc_robust_OAM_LoRLambda_w(j_ord_idx, numSamples_j, T, param, X_t(j_ord_idx, :), X_e_hat, Omega_e, Omega_Anomalies_e, events,new_events, Par, Cauchy_MEDIANs,Cauchy_MADs,Cauchy_Trans, W_idx, w_size,w, OAM_mu,OAM_A,OAM_beta, Lambda,Lambda_normalize);
+
+                    Omega_t(j_ord_idx, :) = Omega_t_j_ord_idx;
+                    Omega_t_r(j_ord_idx, :) = Omega_t_j_ord_idx_r;
+                    Omega_t_L(j_ord_idx, :) = Omega_t_j_ord_idx_L;
+                    X_t_omega(j_ord_idx, :) = X_t(j_ord_idx, :) .* Omega_t_j_ord_idx;
+                    Anomalies_t_omega(j_ord_idx,:) = Anomalies_t_omega_j_ord_idx;
+                end
+                Time_sample_t = Time_sample_t + toc(time_sample);
+                % Recovery all root  IDX_root_i: U, X_t_omega
+                for j = IDX_root_i
+                    temp = length(find(U_W_idx(j,:)~=0));
+                    idx_t_omega = find(Omega_t(j,:)~=0);
+                    idx_t_omega_anomalies = find(Anomalies_t_omega(j,:)==1); %----------------------
+                    %idx_t_omega = unique([idx_t_omega, idx_t_omega_anomalies]);
+                    X_t_omega_j = X_t_omega(j, idx_t_omega)';
+                    if temp>0
+                        U_W_j = U_W(:,1:temp,j);
+                        P_UWj_omega = U_W_j(idx_t_omega,:) * pinv(U_W_j(idx_t_omega,:));
+                        estimator_j = (norm(X_t_omega_j - P_UWj_omega*X_t_omega_j)^2) / (norm(X_t_omega_j)^2+eps);
+                    else
+                        estimator_j = 1;
+                    end
+                    r_estimators(j,t) = estimator_j;
+
+                    if estimator_j < param.yita
+                        % Recovery root metrics by its inter-batch subspace
+                        X_e_hat_t_j = U_W_j*pinv(U_W_j(idx_t_omega,:))*X_t_omega_j;
+                        X_e_hat_t(j,:) = X_e_hat_t_j';
+                        X_e_hat_t(j, idx_t_omega) = X_t_omega_j';
+                        X_e_hat_t_normal(j,:) = X_e_hat_t(j,:);
+                        X_e_hat_t(j, idx_t_omega_anomalies) = X_t(j, idx_t_omega_anomalies);
+
+                        r_iscomplete(j,t) = 1;
+                        ranks(j) = ranks(j) - 1;
+                    else
+                        r_iscomplete(j,t) = 0;
+
+                        X_e_hat_t(j, idx_t_omega) = X_t_omega_j';
+                        X_e_hat_t_normal(j, idx_t_omega) = X_t_omega_j';
+                        X_e_hat_t(j, idx_t_omega_anomalies) = X_t(j, idx_t_omega_anomalies);
+                        disp(['Root Error!', num2str(j)])
+                    end
+                end
+
+                % 对于每个子节点，应该在它的所有父节点IDX_j_parent都被填充后，才进行填充，以下代码没有进行判断
+                for j = IDX_other_i
+
+                    IDX_j_parent = find(B(j,:)~=0);
+                    iscomplete_j = 1;
+                    if ismember(0, r_iscomplete(IDX_j_parent,t))
+                        iscomplete_j = 0;
+                    else
+                        % 因果父空间
+                        U_W_j_parent = X_e_hat_t(IDX_j_parent,:)';
+                        %U_W_j_parent = [];
+                        % 增强因果父空间
+                        for j_par = IDX_j_parent
+                            temp = length(find(U_W_idx(j_par,:)~=0));
+                            U_W_j_par = U_W(:,1:temp,j_par);
+                            U_W_j_parent = [U_W_j_parent U_W_j_par];
+                        end
+                        % 历史子空间
+                        temp = length(find(U_W_idx(j,:)~=0));
+                        if temp>0
+                            U_W_j = U_W(:,1:temp,j);
+                        else
+                            iscomplete_j = 0;
+                        end
+                    end
+                    % 构造采样数据 = [当前batch采样数据]
+                    idx_t_omega = find(Omega_t(j,:)==1);
+                    idx_t_omega_anomalies = find(Anomalies_t_omega(j,:)==1); %--------------------------
+                    %idx_t_omega = unique([idx_t_omega, idx_t_omega_anomalies]);
+                    X_t_omega_j = X_t_omega(j,idx_t_omega)';
+
+                    if iscomplete_j
+                        % 1）测试采样数据是否存在于 [父节点构成的子空间] 中
+                        % 2）测试采样数据是否存在于 [父节点构成的子空间 ∪ 历史子空间] 中
+                        U_W_j_parent = [U_W_j_parent U_W_j];
+                        U_W_j_parent_omega = U_W_j_parent(idx_t_omega, :);
+                        P_UWjparent_omega = U_W_j_parent_omega * pinv(U_W_j_parent_omega);
+                        estimator_j = (norm(X_t_omega_j  - P_UWjparent_omega*X_t_omega_j)^2) / (norm(X_t_omega_j)^2+eps);
+                    else
+                        estimator_j = 1;
+                    end
+                    r_estimators(j,t) = estimator_j;
+                    if estimator_j < param.yita
+                        % Recover child metric by its parents' subspace
+                        % with p1*p2
+                        X_e_hat_j = U_W_j_parent * pinv(U_W_j_parent_omega) * X_t_omega_j;
+                        X_e_hat_t(j, :) = X_e_hat_j';
+                        X_e_hat_t(j, idx_t_omega) = X_t_omega(j,idx_t_omega);
+                        X_e_hat_t_normal(j,:) = X_e_hat_t(j,:);
+                        X_e_hat_t(j, idx_t_omega_anomalies) = X_t(j,idx_t_omega_anomalies);
+                        %                         [alpha_cau, alpha_his] = subfunc_inferEffect_ALS(X_t_omega_j, U_W_j_parent_omega, U_W_j(idx_t_omega,:), param.als_max_iter, param.als_tol);
+                        %                         X_hat_j = U_W_j_parent*alpha_cau + U_W_j*alpha_his;
+                        %                         X_hat_t(j,:) = X_hat_j';
+                        %                         X_hat_t(j, idx_t_omega) = X_t_omega(j,idx_t_omega);
+                        %                         X_hat_t_normal(j,:) = X_hat_t(j,:);
+                        %                         X_hat_t(j, idx_t_omega_anomalies) = X_t(j,idx_t_omega_anomalies);
+
+                        r_iscomplete(j,t) = 1;
+                    else
+                        if iscomplete_j
+                            % 怀疑是父节点子空间表达能力不足的问题，利用所有的祖宗节点构造子空间
+                            [alpha_cau, alpha_his] = subfunc_inferEffect_ALS(X_t_omega_j, U_W_j_parent_omega, U_W_j(idx_t_omega,:), param.als_max_iter, param.als_tol);
+                            X_e_hat_j = U_W_j_parent*alpha_cau + U_W_j*alpha_his;
+                            X_e_hat_t(j,:) = X_e_hat_j';
+                            X_e_hat_t(j, idx_t_omega) = X_t_omega(j,idx_t_omega);
+                            X_e_hat_t_normal(j,:) = X_e_hat_t(j,:);
+                            X_e_hat_t(j, idx_t_omega_anomalies) = X_t(j,idx_t_omega_anomalies);
+                            r_iscomplete(j,t) = 1;
+                        else
+                            r_iscomplete(j,t) = 0;
+                            X_e_hat_t(j, idx_t_omega) = X_t_omega_j';
+                            X_e_hat_t_normal(j, idx_t_omega) = X_t_omega_j';
+                            X_e_hat_t(j, idx_t_omega_anomalies) = X_t(j, idx_t_omega_anomalies);
+                            disp(['Effect Error!', num2str(j)])
+                        end
+                    end
+                    ranks(j) = ranks(j) - 1;
+                end
+
+                % 如果根因指标存在无法填充的情况，全采样后续batch的所有指标，重新计算因果结构
+                r_iscomplete_root_i = find(r_iscomplete(IDX_root_i,t) == 0)';
+                if ~isempty(r_iscomplete_root_i)
+                    incomplete_batch = t;
+                    beta_count = 0;
+                    %                     if size(U_W_union,2)==0
+                    %                         U_W_union = U_W;
+                    %                         U_W_union_idx = U_W_idx;
+                    %                     end
+                end
+                % 如果效应指标存在无法填充的情况，全采样后续batch的所有指标，重新计算因果结构
+                r_iscomplete_other_i = find( r_iscomplete(IDX_other_i,t) == 0)';
+                if ~isempty(r_iscomplete_other_i)
+                    incomplete_batch = t;
+                    beta_count = 0;
+                    %                     if size(U_W_union,2)==0
+                    %                         U_W_union = U_W;
+                    %                         U_W_union_idx = U_W_idx;
+                    %                     end
+                end
+
+            end% for i=1:numClusters
+
+            % 2.3 Updating phase for new batch : update (OAM_A,OAM_mu,OAM_beta) by new events
+            [OAM_mu,OAM_A,OAM_beta, S_mu,S_A,S_beta] = subfunc_robust_OAM_update_mbp(OAM_mu,OAM_A,OAM_beta, events, new_events, w,T, M, OAM_max_iter, OAM_epsilon, S_mu,S_A,S_beta, Par, W_idx);
+
+            X_e_hat_normal(:, (t-1)*T+1 : t*T) = X_e_hat_t_normal;
+            Omega_Anomalies(:, (t-w_size+w-1)*T+1 : (t-w_size+w)*T) = Anomalies_t_omega;
+            Omega_r_e(:, (t-1)*T+1 : t*T) = Omega_t_r;
+            Omega_L_e(:, (t-1)*T+1 : t*T) = Omega_t_L;
+            Omega_r(:, (t-w_size+w-1)*T+1 : (t-w_size+w)*T) = Omega_t_r;
+            Omega_L(:, (t-w_size+w-1)*T+1 : (t-w_size+w)*T) = Omega_t_L;
+        end
+        % *******************************************************************************************
+        X_e_hat(:, (t-1)*T+1 : t*T) = X_e_hat_t;
+        %X_hat_normal(:, (t-1)*T+1 : t*T) = X_hat_t_normal;
+        Omega_e(:, (t-1)*T+1 : t*T) = Omega_t;
+        Omega(:, (t-w_size+w-1)*T+1 : (t-w_size+w)*T) = Omega_t;
+        
+        Times_sample(t) = Time_sample_t/M;
+
+        r_ranks(:,t) = ranks';
+        %             Omega_Anomalies(:, (t-1)*T+1 : t*T) = Anomalies_t_omega;
+        %             Anomalies(:, (t-1)*T+1 : t*T) = Anomalies_t;
+        %             Omega_Cauchy_spike(:, (t-1)*T+1 : t*T) = Omega_Cauchy_spike_t;
+        %             Omega_Cauchy_dip(:, (t-1)*T+1 : t*T) = Omega_Cauchy_dip_t;
+
+        r_incomplete_batchs(t) = incomplete_batch;
+
+        % monitoring anomalies from X_hat for alerting!
+        % update Cauchy
+        range_w = ((W_idx(1)-1)*T+1 : W_idx(w_size)*T);
+        X_range_w = X_e_hat(:, range_w);
+        Cauchy_MEDIANs_hat = median( X_range_w' );
+        Cauchy_MADs_hat = median(abs(X_range_w' - Cauchy_MEDIANs_hat));
+        Cauchy_Trans_t = zeros(size(X_e_hat_t));
+        Cauchy_CDF_t = zeros(size(X_e_hat_t));
+        Omega_Cauchy_spike_t = zeros(size(X_e_hat_t));
+        Omega_Cauchy_dip_t = zeros(size(X_e_hat_t));
+        for i = 1:M
+            Cauchy_Trans_t(i,:) = Cauchy_Trans( X_e_hat_t(i,:), Cauchy_MEDIANs_hat(i) );
+            Cauchy_CDF_t(i,:) = (1/pi) * atan( (Cauchy_Trans_t(i,:)-Cauchy_MEDIANs_hat(i))/(Cauchy_MADs_hat(i)+eps) ) + 0.5;
+            Omega_Cauchy_spike_t(i, Cauchy_CDF_t(i,:)>param.SPIKE_LIMIT) = 1; % spike
+            Omega_Cauchy_dip_t(i, Cauchy_CDF_t(i,:)<param.DIP_LIMIT) = 1; % dip
+        end
+        Labels_Anomalies_X_hat(:, (t-w_size+w-1)*T+1:(t-w_size+w)*T) = double(Omega_Cauchy_spike_t | Omega_Cauchy_dip_t);
+    
+    end
+end
+end
