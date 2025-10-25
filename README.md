@@ -1,5 +1,5 @@
-# $LoR\lambda$-$Mon$
-This project implements $LoR\lambda$-$Mon$, an adaptive monitoring framework designed for reducing the monitoring overhead of fine-grained performance monitoring. The model automatically identifies sparse causal structures of multi-metric, calculate low-rank frequency for each metric to sampling coarse normal state with minimal overhead, calculate lambda frequency to predicting anomalies.
+# $LoR\lambda$-Mon
+This project implements $LoR\lambda$-Mon, an adaptive monitoring framework designed for reducing the monitoring overhead of fine-grained performance monitoring. The model automatically identifies sparse causal structures of multi-metric, calculate low-rank frequency for each metric to sampling coarse normal state with minimal overhead, calculate lambda frequency to predicting anomalies.
 
 ## Dataset Description
 
