@@ -1,6 +1,8 @@
 # $LoR\lambda$-Mon
 This project implements $LoR\lambda$-Mon, an adaptive monitoring framework designed for reducing the monitoring overhead of fine-grained performance monitoring. The model automatically identifies sparse causal structures of multi-metric, calculate low-rank frequency for each metric to sampling coarse normal state with minimal overhead, calculate lambda frequency to predicting anomalies.
 
+paper_1224_Appendix is our appendix including the proof of Theorem 4.1 (Causal Matrix Completion).
+
 ## Dataset Description
 
 File: mysql_510_608_withLabels.mat
