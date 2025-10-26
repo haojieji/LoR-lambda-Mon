@@ -47,12 +47,14 @@ The fault injection strategy described in our paper's Evaluation section is impl
 
 ## Dataset
 
-The collected data is exported as **combine_metrics_510_608.csv**, with fault injection time ranges recorded in **fault_timeline_510_608.csv**. We employ a Cauchy distribution-based anomaly detection method (SIGMOD'18) to label data points deviating from normal states. The complete labeled dataset is organized as **combine_metrics_510_608_with_labels.csv**, where:
+The collected data is exported as **combine_metrics_510_608.csv**, with fault injection time ranges recorded in **fault_timeline_510_608.csv**. We employ a Cauchy distribution-based anomaly detection method (SIGMOD'18 [1]) to label data points deviating from normal states. The complete labeled dataset is organized as **combine_metrics_510_608_with_labels.csv**, where:
 
 - `label_1`: Fault injection time range
 - `label_2`: Anomaly labels
 
 This processed dataset serves as input to our framework: `mysql_510_608_withLabels.mat`
+
+[1] Wei Cao, Yusong Gao, Bingchen Lin, Xiaojie Feng, Yu Xie, Xiao Lou, and Peng Wang. 2018. TcpRT: Instrument and Diagnostic Analysis System for Service Quality of Cloud Databases at Massive Scale in Real-time. In Proceedings of the 2018 International Conference on Management of Data (Houston, TX, USA) (SIGMOD ’18). Association for Computing Machinery, New York, NY, USA, 615–627. https://doi.org/10.1145/3183713.319065
 
 ### Dataset Details
 
