@@ -33,7 +33,7 @@ The complete pipeline is illustrated in Figure 3 of our paper.
 
 Our testbed architecture is shown below. OLTPBench deployed on a server accesses the MySQL database running on a Kubernetes cluster. We collect numerous metrics using Prometheus to generate a millisecond-level multi-metric dataset.
 
-![testbed_framework](testbed\testbed_framework.png)
+![testbed_framework](\testbed\testbed_framework.png)
 
 ### Fault Injection
 
