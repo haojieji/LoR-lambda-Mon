@@ -43,7 +43,7 @@ We inject three common types of faults:
 - CPU saturation
 - Memory saturation
 
-The fault injection strategy described in our paper's Evaluation section is implemented in `fault_injection.sh`. Simply run this file after launching OLTPBench.
+The fault injection strategy described in our paper's Evaluation section is implemented in `fault_orchestrator_paper.sh`. Simply run this file after launching OLTPBench `run_oltpbench.sh`.
 
 ## Dataset
 
