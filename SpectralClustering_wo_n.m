@@ -49,7 +49,7 @@ if k < 2
     gaps = diff(mu_sorted);
     ratios = gaps ./ mu_sorted(2:end);
 %     alpha = 1.5;
-%     stability_threshold = median(gaps) * alpha;  % alpha 为调节因子
+%     stability_threshold = median(gaps) * alpha; 
     temps = find(ratios(1:floor(length(ratios)*0.3)) < 0.02,1);
 %     temps = find(ratios(1:floor(length(ratios)*0.3)) < 0.1,1);
 %     figure;
@@ -64,7 +64,8 @@ k = max(1, min(k, ceil(N/2)));
 %[~, idx] = sort(eigenvalues, 'descend');
 kerN = V(:, idx(1:k));
 %  ****************************************
-kerN = cnormalize_inplace(kerN')'; % 行归一化
+kerN = cnormalize_inplace(kerN')';
 
 groups = litekmeans(kerN, k, 'MaxIter',MaxIter,'Replicates',Replicates);
+
 
