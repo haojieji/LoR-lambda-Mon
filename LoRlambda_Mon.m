@@ -37,7 +37,7 @@ param.DIP_LIMIT = 0.08;
 [M, N] =size(X_e);
 num_batch = floor(N/T);
 
-% 采样率
+% sampling rate
 test_range = w_size*T+1:num_batch*T;
 Omega_all = double(Omega_e |  Omega_Anomalies_e);
 perf_sampleratio = sum(sum(Omega_all(:, test_range))) / ((num_batch-w_size)*T*M);
@@ -383,7 +383,7 @@ for t = 1:num_batch
                         X_e_hat_iru_omega = X_e_hat_iru(Omega_iru_idx);
                         X_e_hat_iru_omega_anomalies = X_e_hat_iru(Omega_iru_anomalies_idx);
 
-                        enhanced_columns = subfunc_enhance_U(U_W_union(:,end-beta_count+1:end,iru), U_W_union_idx(end-beta_count+1:end)); %增强子空间
+                        enhanced_columns = subfunc_enhance_U(U_W_union(:,end-beta_count+1:end,iru), U_W_union_idx(end-beta_count+1:end)); %enhanced subspace
                         U_W_union_iru = [U_W_union(:,1:end-beta_count,iru) enhanced_columns];
                         X_e_hat_iru = U_W_union_iru*pinv(U_W_union_iru(Omega_iru_idx,:))*X_e_hat_iru_omega;
 
@@ -656,4 +656,5 @@ for t = 1:num_batch
     
     end
 end
+
 end
