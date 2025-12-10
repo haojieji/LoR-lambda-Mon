@@ -70,8 +70,10 @@ The red color denotes the anomaly.
 ## How to use？
 
 Just run **`src/LoRlambda_Mon.m`** on your machine (matlab version R2021b), you will get 
-    - 1) the SparseCausalStructure within dataset
-    - 2) the real-time Monitoring Results (sampling rate, CPU time, NMAE, Precision, Recall, F1-score).
+
+1) the SparseCausalStructure within dataset;
+
+2) the real-time Monitoring Results (sampling rate, CPU time, NMAE, Precision, Recall, F1-score).
 
 **`LoRlambda_Mon.m`**
 The core implementation of our adaptive monitoring model, containing all modules from Figure 3 in the paper. Executing this script generates:
