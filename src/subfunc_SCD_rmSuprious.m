@@ -3,18 +3,18 @@
 function [r_Stru, r_Ord] = subfunc_SCD_rmSuprious(W)
 
     [M, n] = size(W);
-    Y = W; % 
-    Ord = []; % 
-    K_Ord = [1:M]; % 
+    Y = W; 
+    Ord = []; 
+    K_Ord = [1:M]; 
     
     % step1. 
     Y = Y - mean(Y, 2)*ones(1,n);
-    r_Stru = ones(M,M); % 
+    r_Stru = ones(M,M); 
 
     % step2. 
     while length(Ord) < M-1
         % step2.0 candidates
-        candidates = setdiff(K_Ord, Ord);  % 
+        candidates = setdiff(K_Ord, Ord);  
         % step2.1 Residual Matrix Res(M, size(W,2), M)
         Res = computeR( Y, candidates, K_Ord, r_Stru);
         % step2.2 Most Independent metric k with its Res(:,:,k)
@@ -37,9 +37,7 @@ function [r_Stru, r_Ord] = subfunc_SCD_rmSuprious(W)
     % step3.  r_Stru
     r_Stru_Ord = r_Stru(r_Ord, r_Ord);
     r_Stru_Ord = tril(r_Stru_Ord, -1);
-    r_Stru_Ord
     r_Stru(r_Ord, r_Ord) = r_Stru_Ord;
-    r_Stru
 end
 
 
@@ -90,7 +88,7 @@ kparam.sigmas=sigma*ones(1,mc);
 try
     J = contrast_ica(contrast,x,kparam);
 catch
-    J = 0; % 异常处理
+    J = 0;
 end
 
 end
@@ -104,7 +102,7 @@ function R = computeR( X, candidates, U_K, r_Stru )
     for j = candidates
         for i = setdiff(U_K, j)
             if r_Stru(j,i)==1 && r_Stru(i,j)==1
-                R(i,:,j) = X(i,:) - Cov(i,j)/Cov(j,j)*X(j,:);  % 无条件计算残差
+                R(i,:,j) = X(i,:) - Cov(i,j)/Cov(j,j)*X(j,:);
             end
         end
     end

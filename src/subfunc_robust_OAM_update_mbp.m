@@ -19,7 +19,6 @@ range_W = (W_idx(1)-1)*T;
 n = cellfun(@(x) sum(x>range_W), events);
 
 for iter = 1:max_iter
-    iter
     % Compute statistics for new events
     S_mu = S_mu_init;
     S_a = S_a_init;

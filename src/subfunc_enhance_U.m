@@ -2,7 +2,6 @@
 %
 % Input: U_W_j 
 %        U_W_idx_j \in R^{1 \times w} 
-% execute：对U_W_idx_j
 % Output: U_enhanced_j 
 function U_enhanced_j = subfunc_enhance_U(U_W_j, U_W_idx_j)
     

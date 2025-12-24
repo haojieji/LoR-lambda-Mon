@@ -33,13 +33,11 @@ t_vec = zeros(N, 1);
 for iN = 2:N
     res = Xn(:,iN);
     candidates = find(r_Stru(iN,:)~=0);
-    candidates
 
     for t = 1:iN-1
         if ~isempty(candidates)
             I = abs(Xn(:,candidates)' * res );
             [val,J] = max(I);
-            val
             J = candidates(J);
             candidates = candidates(candidates ~= J);
                 S(iN, t) = J;

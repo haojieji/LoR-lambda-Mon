@@ -27,7 +27,6 @@ function [alpha_cau, alpha_his] = subfunc_inferEffect_ALS(x, C, H, als_max_iter,
         alpha_his = (H'*H + lambda*eye(nh)) \ (H'*(x - C*alpha_cau));
 
         residual = norm(x - C*alpha_cau - H*alpha_his);
-        residual
         
         if abs(residual_prev - residual) < als_tol
             break;

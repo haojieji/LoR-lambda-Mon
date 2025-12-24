@@ -48,8 +48,6 @@ for j=1:M
     if ~isempty(idx_anomalies_U_W_union)
         idx_nomalies = find( Omega_Cauchy(j, :)==0 );
         idx_nomalies_U_W_union = (temp-beta)*T + idx_nomalies;
-        j
-        idx_nomalies
         if length(idx_nomalies)>=2 
             val = interp1(idx_nomalies_U_W_union, U_W_j(idx_nomalies_U_W_union), idx_anomalies_U_W_union,'linear','extrap');
             W(j, (w_size-beta)*T+idx_anomalies) = val;

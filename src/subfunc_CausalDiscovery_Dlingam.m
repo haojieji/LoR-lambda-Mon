@@ -106,7 +106,7 @@ function R = computeR( X, candidates, U_K, M )
         if Cov(j,j)~=0
             for i = setdiff(U_K, j)
                 % skip residue calculation by using M
-                R(i,:,j) = X(i,:) - Cov(i,j)/Cov(j,j)*X(j,:);  % 无条件计算残差
+                R(i,:,j) = X(i,:) - Cov(i,j)/Cov(j,j)*X(j,:); 
             end
         end
     end

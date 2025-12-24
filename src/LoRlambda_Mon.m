@@ -13,7 +13,10 @@
 %    2.3 Updating phase
 
 % Test run
-% 1.
+clear
+load("../dataset/mysql_510_608_withLabels.mat");
+run('data_preprocess.m');
+% 1. default parameters for OLTP dataset
 T = 100;
 w = 23;
 w_size = 2201;
@@ -32,10 +35,24 @@ param.epsilon_gamma = 0.2;
 param.SPIKE_LIMIT = 0.92;
 param.DIP_LIMIT = 0.08;
 % 3.run
-[X_e_hat,X_e_hat_normal, Omega,Omega_r,Omega_L,Omega_e,Omega_r_e,Omega_L_e, r_ranks, r_estimators, r_iscomplete, r_IDX_groups, r_numClusters, r_B, r_Ord, eigns, IDX_root, IDX_intermedia, r_incomplete_batchs, Omega_Cauchy_spike, Omega_Cauchy_dip,Omega_Anomalies,Omega_Anomalies_e, Lambda,Lambda_normalize, OAM_mu, OAM_A, OAM_beta, Labels_Anomalies_X_hat, Times_sample] = localMon(X,X_e, w,w_size, T, param, columnIDX, columnNames);
+[X_e_hat,X_e_hat_normal, Omega,Omega_r,Omega_L,Omega_e,Omega_r_e,Omega_L_e, r_ranks, r_estimators, r_iscomplete, r_IDX_groups, r_numClusters, r_B, r_Ord, eigns, IDX_root, IDX_intermedia, r_incomplete_batchs, Omega_Cauchy_spike, Omega_Cauchy_dip,Omega_Anomalies,Omega_Anomalies_e, Lambda,Lambda_normalize, OAM_mu, OAM_A, OAM_beta, Labels_Anomalies_X_hat, Overhead_cputime_decision, Overhead_cputime_sampling, Overhead_cputime_inference, Overhead_cputime_modelupdate] = LoR_lambda_Mon(X,X_e, w,w_size, T, param, columnIDX, columnNames);
 % 4.evaluation
 [M, N] =size(X_e);
 num_batch = floor(N/T);
+
+for i=1:M
+    if X_max_min(1,i)>0
+        X(i,:) = X(i,:)*X_max_min(1,i) + X_min(1,i);
+        X_e(i,:) = X_e(i,:)*X_max_min(1,i) + X_min(1,i);
+        X_e_hat(i,:) = X_e_hat(i,:)*X_max_min(1,i) + X_min(1,i);
+        X_e_hat_normal(i,:) = X_e_hat_normal(i,:)*X_max_min(1,i) + X_min(1,i);
+    else
+        X(i,:) = X(i,:)*X_max(1,i);
+        X_e(i,:) = X_e(i,:)*X_max(1,i);
+        X_e_hat(i,:) = X_e_hat(i,:)*X_max(1,i);
+        X_e_hat_normal(i,:) = X_e_hat_normal(i,:)*X_max(1,i);
+    end
+end
 
 % sampling rate
 test_range = w_size*T+1:num_batch*T;
@@ -61,9 +78,8 @@ X_hat_normal = X;
 X_hat(:,w*T+1:end) = X_e_hat(:,w_size*T+1:end);
 X_hat_normal(:,w*T+1:end) = X_e_hat_normal(:,w_size*T+1:end);
 
-%  by thresh and Labels
-[perf_Precisions, perf_Recalls, perf_Precision, perf_Recall, perf_Precision2, perf_Recall2, perf_label_anomalies, perf_F1,perf_F1_2] = get_perf_OAM_precision_recall(X_hat, Labels_anomalies_X, M,w,T);
-
+% precision, recall, F1
+[perf_Precision, perf_Recall, perf_F1, perf_label_anomalies] = get_perf_OAM_precision_recall(X_hat, Labels_anomalies_X, M,w,T);
 
 freqs_base = zeros(M, num_batch-w_size+w);
 for i = 1:(num_batch-w_size+w)
@@ -79,7 +95,10 @@ for i = 1:(num_batch-w_size+w)
     end
 end
 
-time_sample_permetric = mean(Times_sample(Times_sample~=0));
+avg_Overhead_cputime_decision = mean(Overhead_cputime_decision(1, w_size+1:num_batch));
+avg_Overhead_cputime_sampling = mean(Overhead_cputime_sampling(1, w_size+1:num_batch));
+avg_Overhead_cputime_inference = mean(Overhead_cputime_inference(1, w_size+1:num_batch));
+avg_Overhead_cputime_modelupdate = mean(Overhead_cputime_modelupdate(1, w_size+1:num_batch));
 % Input:
 %       X = M × N, M  is the number of metrics, N is the number of time steps
 %       w: the original window size
@@ -100,7 +119,7 @@ time_sample_permetric = mean(Times_sample(Times_sample~=0));
 %       f: frequecy at batch t
 %       B: Clustering Structure at batch t
 %       B_i: Causal Adjacent Matrix at batch t
-function [X_e_hat,X_e_hat_normal, Omega,Omega_r,Omega_L,Omega_e,Omega_r_e,Omega_L_e, r_ranks, r_estimators, r_iscomplete, IDX_groups, numClusters, B, Ord, eigns, IDX_root, IDX_intermedia, r_incomplete_batchs, Omega_Cauchy_spike, Omega_Cauchy_dip,Omega_Anomalies,Omega_Anomalies_e, Lambda,Lambda_normalize, OAM_mu, OAM_A, OAM_beta, Labels_Anomalies_X_hat, Times_sample] = localMon(X,X_e, w,w_size, T, param, columnIDX, columnNames)
+function [X_e_hat,X_e_hat_normal, Omega,Omega_r,Omega_L,Omega_e,Omega_r_e,Omega_L_e, r_ranks, r_estimators, r_iscomplete, IDX_groups, numClusters, B, Ord, eigns, IDX_root, IDX_intermedia, r_incomplete_batchs, Omega_Cauchy_spike, Omega_Cauchy_dip,Omega_Anomalies,Omega_Anomalies_e, Lambda,Lambda_normalize, OAM_mu, OAM_A, OAM_beta, Labels_Anomalies_X_hat, Overhead_cputime_decision, Overhead_cputime_sampling, Overhead_cputime_inference, Overhead_cputime_modelupdate] = LoR_lambda_Mon(X,X_e, w,w_size, T, param, columnIDX, columnNames)
 [M, N] = size(X_e);
 num_batch = floor(N/T);
 W = [];
@@ -156,7 +175,11 @@ r_estimators = zeros(M, num_batch);
 r_iscomplete = zeros(M, num_batch);
 r_incomplete_batchs = zeros(1, num_batch);
 
-Times_sample = zeros(1,num_batch);
+Overhead_cputime_decision = zeros(1,num_batch);
+Overhead_cputime_sampling = zeros(1,num_batch);
+Overhead_cputime_inference = zeros(1,num_batch);
+Overhead_cputime_modelupdate = zeros(1,num_batch);
+
 for t = 1:num_batch
     t
     W_idx = [W_idx t];
@@ -177,7 +200,7 @@ for t = 1:num_batch
             P_UWbasis_i = U_W_basis_i * pinv(U_W_basis_i);
             estimator = (norm(X_t_i - P_UWbasis_i * X_t_i)^2) / (norm(X_t_i)^2+eps);
             r_estimators(i,t) = estimator;
-            estimator
+            
             if estimator > param.yita
                 r_i = r_i + 1;
                 U_W_basis(:, r_i, i) = X_t_i;
@@ -223,17 +246,6 @@ for t = 1:num_batch
             end
 
             % visualize：
-            rank_M = 1; 
-            U_M = [];
-            U_M(:,1) = X_train(1,:)';
-            for i = 2:M
-                W_i = X_train(i,:)';
-                res_i = (norm(W_i - U_M * pinv(U_M) * W_i)^2) / (norm(W_i)^2 + eps);
-                if res_i > param.yita
-                    U_M(:,end+1) = W_i;
-                    rank_M = rank_M +1;
-                end
-            end
             rank_M_svd = rank(X_train');
             figure;
             for i = 1:numClusters
@@ -253,7 +265,7 @@ for t = 1:num_batch
                     rank_causal = max(rank_causal, length(find(B_i(j,:)>0)));
                 end
                 ranks_Ord_str = strjoin(string(ranks_Ord), ', ');
-                legend_text = sprintf('causal rank=%d, temporal ranks=[%s], whole rank=%d, svd rank=%d', rank_causal, ranks_Ord_str, rank_M, rank_M_svd);
+                legend_text = sprintf('causal rank=%d, temporal ranks=[%s], svd rank=%d', rank_causal, ranks_Ord_str, rank_M_svd);
                 
                 legend(h, legend_text, 'Location', 'best');
             end
@@ -265,7 +277,7 @@ for t = 1:num_batch
                 B_i = B(Ord_i, Ord_i);
                 
                 subplot(2, ceil(numClusters/2), i);
-                heatmap(B_i, 'XLabel', 'parent', 'YLabel', 'child', 'Title', 'adjacent matrix{i}');
+                heatmap(B_i, 'XLabel', 'parent', 'YLabel', 'child', 'Title', 'adjacent matrix');
                 colormap jet;
                 colorbar;
             end
@@ -276,6 +288,7 @@ for t = 1:num_batch
         X_t = X_e(:, (t-1)*T+1 : t*T);
         % step1. update Window data W, W_idx, U_W, U_W_idx, B
         % Update W:
+        cputime_decision_start = cputime;
         idx_oldest = W_idx(1);
         W_idx = W_idx(2:end); 
         W(:, (size(W,2)+1):(size(W,2)+T) ) = X_t; 
@@ -303,6 +316,7 @@ for t = 1:num_batch
         end
 
         ranks = ranks + 1;
+        Overhead_cputime_decision(t) = cputime - cputime_decision_start;
         
         Time_sample_t = 0;
         
@@ -320,11 +334,14 @@ for t = 1:num_batch
         % *******************************************************************************
         if incomplete_batch > 0
             %
+            cputime_sampling_start = cputime;
             Omega_t = ones(M, T);
             X_e_hat_t = X_t;
             X_e_hat_t_normal = X_t;
             beta_count = beta_count+1;
+            Overhead_cputime_sampling(t) = cputime - cputime_sampling_start;
             % 
+            cputime_decision_start = cputime;
             for i = 1:M
                 temp = length(find(U_W_idx(i,:)~=0));
                 U_W_i = U_W(:,1:temp,i);
@@ -338,6 +355,7 @@ for t = 1:num_batch
                 U_W(:,temp+1,i) = X_t_i;
                 U_W_idx(i,temp+1) = t;
             end
+            Overhead_cputime_decision(t) = Overhead_cputime_decision(t) + (cputime-cputime_decision_start);
             % s1 U_W_Union
             U_W_union(:,size(U_W_union,2)+1,:) = X_t';
             temp = length(U_W_union_idx);
@@ -362,6 +380,7 @@ for t = 1:num_batch
                 Omega_L(:,(t-beta_count-w_size+w)*T+1:(t-w_size+w)*T) = Omega_t_r;
 
                 % s2 
+                cputime_inference_start = cputime;
                 IDX_unrecover = find(r_iscomplete(:,incomplete_batch)==0)';
                 if ~isempty(IDX_unrecover)
                     IDX_root_unrecover = [];
@@ -395,15 +414,12 @@ for t = 1:num_batch
                         r_iscomplete(iru, incomplete_batch) = 1;
                     end
                     for iou = IDX_other_unrecover
-                        % -------------------------
-                        % 
                         IDX_j_parent = find(B(iou,:)~=0);
                         U_W_j_parent = X_e_hat(IDX_j_parent, (incomplete_batch-1)*T+1:incomplete_batch*T)';
 
                         for j_par = IDX_j_parent
                             temp = length(U_W_union_idx);
                             U_W_j_par = U_W_union(:,1:temp,j_par);
-                            %U_W_j_par = subfunc_enhance_U(U_W_j_par, U_W_union_idx);
                             U_W_j_parent = [U_W_j_parent U_W_j_par];
                         end
                         U_W_union_iou = U_W_union(:,:,iou);
@@ -430,13 +446,16 @@ for t = 1:num_batch
                         r_iscomplete(iou, incomplete_batch) = 1;
                     end
                 end
+                Overhead_cputime_inference(t) = cputime - cputime_inference_start;
                 % s4 
                 if r_iscomplete(:, incomplete_batch)
                     disp(["OK", incomplete_batch]);
                 end
 
                 % 2.3 Updating phase for new batch : update (OAM_A,OAM_mu,OAM_beta) by new events
+                cputime_modelupdate_start = cputime;
                 [OAM_mu,OAM_A,OAM_beta, S_mu,S_A,S_beta] = subfunc_robust_OAM_update_mbp(OAM_mu,OAM_A,OAM_beta, events, new_events, w,T, M, OAM_max_iter, OAM_epsilon, S_mu,S_A,S_beta, Par, W_idx);
+                Overhead_cputime_modelupdate(t) = cputime - cputime_modelupdate_start;
                 for i = 1:M
                     for j = (t-w_size+w-beta_count)*T+1:(t-w_size+w)*T
                         % lambda_i(j)
@@ -471,7 +490,7 @@ for t = 1:num_batch
                 IDX_root_i = IDX_root(i, 1:num_root_i);
                 IDX_other_i = Ord_i(~ismember(Ord_i, IDX_root_i));
 
-                time_sample = tic;
+                cputime_sampling_start = cputime;
                 % step4. calculate frequency of root metrics
                 for j = 1:size(B_i,1)
                     j_ord_idx = Ord_i(j); 
@@ -486,7 +505,6 @@ for t = 1:num_batch
                         r_j = length(j_parent_idx);
                         numSamples_j = max(param.theta_c*r_j*log(r_j), 1);
                     end
-                    numSamples_j
                     % 2.2 Low-rank Lambda frequency sampling:
                     % sample metric by f_j and lambda_m(t)
                     % update lambda_m(t) by parents' anomalies
@@ -501,8 +519,10 @@ for t = 1:num_batch
                     X_t_omega(j_ord_idx, :) = X_t(j_ord_idx, :) .* Omega_t_j_ord_idx;
                     Anomalies_t_omega(j_ord_idx,:) = Anomalies_t_omega_j_ord_idx;
                 end
-                Time_sample_t = Time_sample_t + toc(time_sample);
+                cputime_sampling_i = cputime - cputime_sampling_start;
+                Overhead_cputime_sampling(t) = Overhead_cputime_sampling(t) + cputime_sampling_i;
                 % Recovery all root  IDX_root_i: U, X_t_omega
+                cputime_inference_start = cputime;
                 for j = IDX_root_i
                     temp = length(find(U_W_idx(j,:)~=0));
                     idx_t_omega = find(Omega_t(j,:)~=0);
@@ -600,6 +620,8 @@ for t = 1:num_batch
                     end
                     ranks(j) = ranks(j) - 1;
                 end
+                cputime_inference_i = cputime - cputime_inference_start;
+                Overhead_cputime_inference(t) = Overhead_cputime_inference(t) + cputime_inference_i;
 
                 r_iscomplete_root_i = find(r_iscomplete(IDX_root_i,t) == 0)';
                 if ~isempty(r_iscomplete_root_i)
@@ -615,7 +637,9 @@ for t = 1:num_batch
             end% for i=1:numClusters
 
             % 2.3 Updating phase for new batch : update (OAM_A,OAM_mu,OAM_beta) by new events
+            cputime_modelupdate_start = cputime;
             [OAM_mu,OAM_A,OAM_beta, S_mu,S_A,S_beta] = subfunc_robust_OAM_update_mbp(OAM_mu,OAM_A,OAM_beta, events, new_events, w,T, M, OAM_max_iter, OAM_epsilon, S_mu,S_A,S_beta, Par, W_idx);
+            Overhead_cputime_modelupdate(t) = cputime - cputime_modelupdate_start;
 
             X_e_hat_normal(:, (t-1)*T+1 : t*T) = X_e_hat_t_normal;
             Omega_Anomalies(:, (t-w_size+w-1)*T+1 : (t-w_size+w)*T) = Anomalies_t_omega;
@@ -629,8 +653,6 @@ for t = 1:num_batch
         %X_hat_normal(:, (t-1)*T+1 : t*T) = X_hat_t_normal;
         Omega_e(:, (t-1)*T+1 : t*T) = Omega_t;
         Omega(:, (t-w_size+w-1)*T+1 : (t-w_size+w)*T) = Omega_t;
-        
-        Times_sample(t) = Time_sample_t/M;
 
         r_ranks(:,t) = ranks';
 
