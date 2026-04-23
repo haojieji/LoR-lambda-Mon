@@ -1,0 +1,27 @@
+# .gitignore for LoRlambda-Mon
+
+# Results and outputs
+result/
+
+# MATLAB temporary files
+*.mat
+*.fig
+*.mex*
+*.asv
+*.log
+
+# IDE files
+.trae/
+.vscode/
+.idea/
+
+# System files
+Thumbs.db
+ehthumbs.db
+
+# Build files
+build/
+dist/
+
+# Dependencies
+node_modules/
