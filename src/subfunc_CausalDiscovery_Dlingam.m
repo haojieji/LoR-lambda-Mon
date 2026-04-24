@@ -7,10 +7,10 @@ function [r_Stru_i, r_B_i, r_Ord] = subfunc_CausalDiscovery_Dlingam(IDX_i, W)
     W_i = W(IDX_i, :);
     [M_i, n] = size(W_i);
     Y = W_i; %
-    Ord = []; % 
-    K_Ord = 1:M_i; % 
-    % step1. 
-    Y = Y - mean(Y, 2)*ones(1,n);
+    Ord = []; %
+    K_Ord = 1:M_i; %
+    % step1.
+    Y = bsxfun(@minus, Y, mean(Y, 2));
 
     r_Stru_i = ones(M_i,M_i);
 
