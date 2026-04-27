@@ -1,124 +1,25 @@
-% LoRlambda: Low-overhead and Robust QoS Metrics Monitoring based on Sparse Causal Structure
-% Training: SparseCausalDiscovery + AverageCausalEffect
-% Robust Data Model = X_nomral + X_anomalies
-% Model layer: Low-rank model, Lambda model
-% Testing:
-%  Low-rank model for Efficient Monitoring:
-%    1.1 Updating window
-%    1.2 Low-rank sampling
-%    1.3 Causal matrix completion: causal metric, effect metric.
-%  Lambda model for Online Anomaly Monitoring:
-%    2.1 Learning phase
-%    2.2 Low-Rank + lambda-based sampling method
-%    2.3 Updating phase
-
-% Test run
-clear
-load("../dataset/mysql_510_608_withLabels.mat");
-run('data_preprocess.m');
-% 1. default parameters for OLTP dataset
-T = 100;
-w = 23;
-w_size = 2201;
-
-% 2.
-param = {};
-param.theta_r=5e-6;
-param.theta_c=1e-1;
-param.yita=1e-6;
-param.thr_ACE = 0.1;
-param.beta = 2;
-param.als_max_iter = 1000;
-param.als_tol = 0.001;
-param.epsilon_delta = 2.7;
-param.epsilon_gamma = 0.2;
-param.SPIKE_LIMIT = 0.92;
-param.DIP_LIMIT = 0.08;
-% 3.run
-[X_e_hat,X_e_hat_normal, Omega,Omega_r,Omega_L,Omega_e,Omega_r_e,Omega_L_e, r_ranks, r_estimators, r_iscomplete, r_IDX_groups, r_numClusters, r_B, r_Ord, eigns, IDX_root, IDX_intermedia, r_incomplete_batchs, Omega_Cauchy_spike, Omega_Cauchy_dip,Omega_Anomalies,Omega_Anomalies_e, Lambda,Lambda_normalize, OAM_mu, OAM_A, OAM_beta, Labels_Anomalies_X_hat, Overhead_cputime_decision, Overhead_cputime_sampling, Overhead_cputime_inference, Overhead_cputime_modelupdate] = LoR_lambda_Mon(X,X_e, w,w_size, T, param, columnIDX, columnNames);
-% 4.evaluation
-[M, N] =size(X_e);
-num_batch = floor(N/T);
-
-for i=1:M
-    if X_max_min(1,i)>0
-        X(i,:) = X(i,:)*X_max_min(1,i) + X_min(1,i);
-        X_e(i,:) = X_e(i,:)*X_max_min(1,i) + X_min(1,i);
-        X_e_hat(i,:) = X_e_hat(i,:)*X_max_min(1,i) + X_min(1,i);
-        X_e_hat_normal(i,:) = X_e_hat_normal(i,:)*X_max_min(1,i) + X_min(1,i);
-    else
-        X(i,:) = X(i,:)*X_max(1,i);
-        X_e(i,:) = X_e(i,:)*X_max(1,i);
-        X_e_hat(i,:) = X_e_hat(i,:)*X_max(1,i);
-        X_e_hat_normal(i,:) = X_e_hat_normal(i,:)*X_max(1,i);
-    end
-end
-
-% sampling rate
-test_range = w_size*T+1:num_batch*T;
-Omega_all = double(Omega_e |  Omega_Anomalies_e);
-perf_sampleratio = sum(sum(Omega_all(:, test_range))) / ((num_batch-w_size)*T*M);
-perf_sampleratios = zeros(1,M);
-perf_sampleratios_normal = zeros(1,M);
-perf_sampleratios_normal_r = zeros(1,M);
-perf_sampleratios_normal_L = zeros(1,M);
-% NMAE
-perf_NMAEs = zeros(1,M);
-for i=1:M
-    perf_NMAEs(i)=sum(abs(X_e_hat(i,test_range)-X_e(i,test_range)))/sum(abs(X_e(i,test_range)));
-    perf_sampleratios(i) = length(find(Omega_all(i,test_range)==1)) / ((num_batch-w_size)*T);
-    perf_sampleratios_normal(i) = length(find(Omega_e(i,test_range)==1)) / ((num_batch-w_size)*T);
-    perf_sampleratios_normal_r(i) = length(find(Omega_r_e(i,test_range)==1)) / ((num_batch-w_size)*T);
-    perf_sampleratios_normal_L(i) = length(find(Omega_L_e(i,test_range)==1)) / ((num_batch-w_size)*T);
-end
-perf_NMAE = mean(perf_NMAEs);
-
-X_hat = X;
-X_hat_normal = X;
-X_hat(:,w*T+1:end) = X_e_hat(:,w_size*T+1:end);
-X_hat_normal(:,w*T+1:end) = X_e_hat_normal(:,w_size*T+1:end);
-
-% precision, recall, F1
-[perf_Precision, perf_Recall, perf_F1, perf_label_anomalies] = get_perf_OAM_precision_recall(X_hat, Labels_anomalies_X, M,w,T);
-
-freqs_base = zeros(M, num_batch-w_size+w);
-for i = 1:(num_batch-w_size+w)
-    for j = 1:M
-        freqs_base(j, i) = sum(sum(Omega(j, (i-1)*T+1:i*T )));
-    end
-end
-Omega_all = double( Omega | Omega_Anomalies );
-freqs_all = zeros(M, num_batch-w_size+w);
-for i = 1:(num_batch-w_size+w)
-    for j = 1:M
-        freqs_all(j, i) = sum(sum(Omega_all(j, (i-1)*T+1:i*T )));
-    end
-end
-
-avg_Overhead_cputime_decision = mean(Overhead_cputime_decision(1, w_size+1:num_batch));
-avg_Overhead_cputime_sampling = mean(Overhead_cputime_sampling(1, w_size+1:num_batch));
-avg_Overhead_cputime_inference = mean(Overhead_cputime_inference(1, w_size+1:num_batch));
-avg_Overhead_cputime_modelupdate = mean(Overhead_cputime_modelupdate(1, w_size+1:num_batch));
-% Input:
-%       X = M × N, M  is the number of metrics, N is the number of time steps
-%       w: the original window size
-%       X_e = M × ( w_size * T + (num_batch-w_size)*T ), enhanced X.
-%       w_size: enhanced window size,  w_size = wT-T+1.
-%       T: the batch size
-% Parameter:
-%       W: Window data, M × w_size*T
-%       Clustering Structure:
-%       B: self-expressive matrix M × M
-%       k: Cluster Number
-%       IDX_i: indexes of cluster i
-%       Causal Structure:
-%       B_i: causal adjacent matrix, M_i × M_i
-% Output:
-%       X_hat_t: recovered data at batch t
-%       Omega_t, X_Omega_t: sampled data at batch t
-%       f: frequecy at batch t
-%       B: Clustering Structure at batch t
-%       B_i: Causal Adjacent Matrix at batch t
+% LoR_lambda_Mon
+% Core implementation of LoRlambda-Mon.
+%
+% Inputs
+%   X           M-by-N matrix of normalized metrics.
+%   X_e         Enhanced M-by-N_e matrix used by the sliding-window model.
+%   w           Number of batches in the original training window.
+%   w_size      Number of batches in the enhanced training window.
+%   T           Samples per batch.
+%   param       Algorithm parameters from config.m.
+%   columnIDX   Indices of metrics that survived preprocessing.
+%   columnNames Metric names used only for visualization labels.
+%
+% Important internal variables
+%   W           Current enhanced training window, M-by-(w_size*T).
+%   B           Learned sparse causal adjacency matrix.
+%   Ord         Topological/causal ordering of metrics in each cluster.
+%   U_W         Per-metric historical subspace basis.
+%   Omega_*     Binary masks for sampled values and detected anomalies.
+%
+% Outputs are intentionally kept compatible with the original experiment
+% scripts.  See docs/algorithm_overview.md for a higher-level description.
 function [X_e_hat,X_e_hat_normal, Omega,Omega_r,Omega_L,Omega_e,Omega_r_e,Omega_L_e, r_ranks, r_estimators, r_iscomplete, IDX_groups, numClusters, B, Ord, eigns, IDX_root, IDX_intermedia, r_incomplete_batchs, Omega_Cauchy_spike, Omega_Cauchy_dip,Omega_Anomalies,Omega_Anomalies_e, Lambda,Lambda_normalize, OAM_mu, OAM_A, OAM_beta, Labels_Anomalies_X_hat, Overhead_cputime_decision, Overhead_cputime_sampling, Overhead_cputime_inference, Overhead_cputime_modelupdate] = LoR_lambda_Mon(X,X_e, w,w_size, T, param, columnIDX, columnNames)
 [M, N] = size(X_e);
 num_batch = floor(N/T);
@@ -159,11 +60,25 @@ Omega_Cauchy_dip = zeros(size(X));
 Omega_Anomalies = zeros(size(X));
 Labels_Anomalies_X_hat = zeros(size(X));
 
-% OnlineAnomalyMonitoring----lambda model
-%     OAM_mu=[];OAM_A=[];OAM_beta=[];
-%     S_mu=[];S_A=[];S_beta=[];
+% Online anomaly monitoring (lambda model).
 OAM_max_iter = 100;
 OAM_epsilon = 1e-3;
+if isfield(param, 'OAM_max_iter')
+    OAM_max_iter = param.OAM_max_iter;
+end
+if isfield(param, 'OAM_epsilon')
+    OAM_epsilon = param.OAM_epsilon;
+end
+
+enableVisualization = true;
+if isfield(param, 'visualization_enable')
+    enableVisualization = param.visualization_enable;
+end
+
+verbose = true;
+if isfield(param, 'verbose')
+    verbose = param.verbose;
+end
 Lambda = zeros(size(X)); 
 Lambda_normalize = zeros(size(X)); 
 events = cell(M,1);
@@ -181,7 +96,9 @@ Overhead_cputime_inference = zeros(1,num_batch);
 Overhead_cputime_modelupdate = zeros(1,num_batch);
 
 for t = 1:num_batch
-    t
+    if verbose
+        fprintf('Processing batch %d/%d\n', t, num_batch);
+    end
     W_idx = [W_idx t];
     % Training Stage
     if t<=w_size
@@ -213,7 +130,7 @@ for t = 1:num_batch
             % Structure：
             X_train = X(:,1:w*T);
             [IDX_groups, numClusters, eigns,~] = subfunc_clustering_by_SSC(X_train);
-            [B, Stru, Ord, IDX_root, IDX_intermedia] = subfunc_CausalStructureLearning(IDX_groups, numClusters, X_train, param.thr_ACE);
+            [B, Stru, Ord, IDX_root, IDX_intermedia] = subfunc_CausalStructureLearning(IDX_groups, numClusters, X_train);
 
             % Model：
             [W, U_W, Omega_Cauchy_spike_e, Omega_Cauchy_dip_e, Cauchy_MEDIANs, Cauchy_MADs] = subfunc_robust_AnomalyDetect_Cauchy(W, U_W, param.SPIKE_LIMIT, param.DIP_LIMIT, Omega_Cauchy_spike_e, Omega_Cauchy_dip_e, Cauchy_Trans);
@@ -245,41 +162,42 @@ for t = 1:num_batch
                 Lambda_normalize(i,1:w*T) = Lambda(i,1:w*T)./max(Lambda(i,1:w*T));
             end
 
-            % visualize：
-            rank_M_svd = rank(X_train');
-            figure;
-            for i = 1:numClusters
-                IDX_i = find(IDX_groups==i);
-                numMetrics_i = length(IDX_i);
-                Ord_i = Ord(i, 1:numMetrics_i);
-                B_i = B(Ord_i, Ord_i);
-                columnNameIDX = columnIDX(Ord_i);
-                
-                subplot(2, ceil(numClusters/2), i);
-                G = digraph(B_i');
-                h=plot(G, 'Layout', 'layered', 'NodeLabel', columnNames(columnNameIDX), 'ArrowSize', 12, 'LineWidth', 1.5, 'NodeColor', [0.2 0.6 1]);
-                title(['DAG of cluster ', num2str(i)])
-                ranks_Ord = ranks(Ord_i); 
-                rank_causal = 0; 
-                for j = 1:size(B_i,1)
-                    rank_causal = max(rank_causal, length(find(B_i(j,:)>0)));
+            if enableVisualization
+                rank_M_svd = rank(X_train');
+                figure;
+                for i = 1:numClusters
+                    IDX_i = find(IDX_groups==i);
+                    numMetrics_i = length(IDX_i);
+                    Ord_i = Ord(i, 1:numMetrics_i);
+                    B_i = B(Ord_i, Ord_i);
+                    columnNameIDX = columnIDX(Ord_i);
+                    
+                    subplot(2, ceil(numClusters/2), i);
+                    G = digraph(B_i');
+                    h=plot(G, 'Layout', 'layered', 'NodeLabel', columnNames(columnNameIDX), 'ArrowSize', 12, 'LineWidth', 1.5, 'NodeColor', [0.2 0.6 1]);
+                    title(['DAG of cluster ', num2str(i)])
+                    ranks_Ord = ranks(Ord_i); 
+                    rank_causal = 0; 
+                    for j = 1:size(B_i,1)
+                        rank_causal = max(rank_causal, length(find(B_i(j,:)>0)));
+                    end
+                    ranks_Ord_str = strjoin(string(ranks_Ord), ', ');
+                    legend_text = sprintf('causal rank=%d, temporal ranks=[%s], svd rank=%d', rank_causal, ranks_Ord_str, rank_M_svd);
+                    
+                    legend(h, legend_text, 'Location', 'best');
                 end
-                ranks_Ord_str = strjoin(string(ranks_Ord), ', ');
-                legend_text = sprintf('causal rank=%d, temporal ranks=[%s], svd rank=%d', rank_causal, ranks_Ord_str, rank_M_svd);
-                
-                legend(h, legend_text, 'Location', 'best');
-            end
-            figure;
-            for i = 1:numClusters
-                IDX_i = find(IDX_groups==i);
-                numMetrics_i = length(IDX_i);
-                Ord_i = Ord(i, 1:numMetrics_i);
-                B_i = B(Ord_i, Ord_i);
-                
-                subplot(2, ceil(numClusters/2), i);
-                heatmap(B_i, 'XLabel', 'parent', 'YLabel', 'child', 'Title', 'adjacent matrix');
-                colormap jet;
-                colorbar;
+                figure;
+                for i = 1:numClusters
+                    IDX_i = find(IDX_groups==i);
+                    numMetrics_i = length(IDX_i);
+                    Ord_i = Ord(i, 1:numMetrics_i);
+                    B_i = B(Ord_i, Ord_i);
+                    
+                    subplot(2, ceil(numClusters/2), i);
+                    heatmap(B_i, 'XLabel', 'parent', 'YLabel', 'child', 'Title', 'adjacent matrix');
+                    colormap jet;
+                    colorbar;
+                end
             end
         end
         r_iscomplete(:,t) = 1;
@@ -448,7 +366,7 @@ for t = 1:num_batch
                 end
                 Overhead_cputime_inference(t) = cputime - cputime_inference_start;
                 % s4 
-                if r_iscomplete(:, incomplete_batch)
+                if all(r_iscomplete(:, incomplete_batch))
                     disp(["OK", incomplete_batch]);
                 end
 

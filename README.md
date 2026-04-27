@@ -1,200 +1,170 @@
-# $LoR\lambda$-Mon
+# LoRλ-Mon
 
-$LoR\lambda$-Mon is an adaptive monitoring framework designed for low-overhead and robust fine-grained QoS metrics monitoring. At its core lies the **Lo**w-**R**ank and **λ**-based Frequency Estimation **Model** ($LoR\lambda$), which incorporates the following key features:
+LoRλ-Mon is a sparse causal structure-driven adaptive multi-metric monitoring framework.  It is designed to minimize monitoring overhead for massive fine-grained metrics while still effectively observing critical, fleeting anomaly events.
 
-## Key Features
+The project is organized so readers can reproduce the paper experiment, inspect each algorithm stage, and adapt the code to their own multi-metric monitoring datasets.
 
-**Sparse Causal Structure (SCS)**
-Reveals that each performance metric is typically influenced by only a few other metrics, forming disjoint Directed Acyclic Graphs (DAGs). This structure enables optimal model complexity to overcome the Bias-Variance Dilemma.
+## What the project does
 
-**Root-cause Metric Identification**
-Identifies all root-cause metrics within each DAG to enhance monitoring data inference accuracy.
+LoRλ-Mon reduces monitoring overhead by deciding **which metric values need to be sampled** and when anomaly-sensitive metrics should be observed more frequently.  It combines:
 
-**Low-Rank-based Frequency Estimation Model**
+- **Sparse causal structure learning** (**Section 5.1**) to group metrics and learn parent/child relationships.
+- **Anomaly separator** (**Section 5.2**) to separate normal metric dynamics from anomaly-driven observations.
+- **Low-rank sampling** (**Sections 5.3.1 and 6.2**) with a tighter sampling bound than the optimal sampling bound, reducing the overhead of monitoring normal data.
+- **Lambda-based sampling** (**Sections 5.3.2 and 6.2**) based on the observation that anomalies propagate across related performance metrics.  LoRλ-Mon uses a sparse-causal-structure-driven Hawkes process to capture this dynamic anomaly propagation and predict future anomaly probability.
+- **Fine-grained inference** to infer missing fine-grained data via temporal and causal correlations across multiple metrics.
 
-- Calculates sampling frequency for root-cause metrics based on historical low-rank structure
-- Determines sampling frequency for effect metrics using Causal Matrix Completion
+See [`docs/algorithm_overview.md`](docs/algorithm_overview.md) for a code-level walkthrough.
 
-**Lambda-based Frequency Estimation Model**
+## Repository layout
 
-- Predicts anomaly occurrence probability by learning inter-anomaly excitation patterns from historical data
-- Computes sampling frequency for each metric based on anomaly probability
+```text
+LoR-lambda-Mon/
+├── README.md
+├── CONTRIBUTING.md
+├── docs/
+│   ├── algorithm_overview.md
+│   └── data_format.md
+├── dataset/
+│   ├── combined_metrics_510_608.csv
+│   ├── combined_metrics_510_608_with_labels.csv
+│   ├── fault_timeline_510_608.csv
+│   └── *.png
+├── src/
+│   ├── config.m                         # Experiment constants
+│   ├── import_dataset_from_csv.m         # Rebuild ignored MAT dataset
+│   ├── validate_lorlambda_mon.m          # Lightweight health check
+│   ├── LoRlambda_Mon.m                   # Reproducible paper experiment runner
+│   ├── LoR_lambda_Mon.m                  # Core online monitoring algorithm
+│   ├── data_preprocess.m                 # Filtering, labeling, normalization
+│   └── subfunc_*.m                       # Algorithm components
+├── testbed/
+│   ├── run_oltpbench.sh
+│   ├── fault_orchestrator_paper.sh
+│   └── testbed_framework.png
+└── paperID_1224_Appendix.pdf
+```
 
-**Fine-grained Inference**
-Reconstructs unsampled data across all metrics using both intra-metric temporal patterns and inter-metric causal relationships.
+## Prerequisites
 
-The complete pipeline is illustrated in Figure 3 of our paper.
-
-## Quick Start
-
-### Prerequisites
-
-- **MATLAB** R2021b or later
-- **Standard MATLAB Toolboxes**:
+- MATLAB R2021b or later.
+- MATLAB toolboxes used by the experiment:
   - Statistics and Machine Learning Toolbox
   - Signal Processing Toolbox
   - Optimization Toolbox
 
-### Installation
+## Quick start
 
-1. **Clone the repository**:
-   ```bash
-   git clone <repository-url>
-   cd LoRlambda-Mon
-   ```
+### 1. Clone the project
 
-2. **Download the dataset**:
-   - The dataset file `mysql_510_608_withLabels.mat` should be placed in the `dataset/` directory
-   - If you don't have the dataset, please refer to the [Dataset](#dataset) section for details
+```bash
+git clone <repository-url>
+cd LoR-lambda-Mon
+```
 
-3. **Run the main script**:
-   ```matlab
-   cd src
-   LoRlambda_Mon
-   ```
+### 2. Create the MATLAB dataset file
 
-## Usage
-
-### Basic Usage
-
-Simply run the main script to execute the complete monitoring pipeline:
+The repository stores CSV files.  The `.mat` file used by MATLAB is generated locally and ignored by Git.
 
 ```matlab
-% In MATLAB command window
-cd('path/to/LoRlambda-Mon/src')
+cd('path/to/LoR-lambda-Mon/src')
+import_dataset_from_csv
+```
+
+This creates:
+
+```text
+dataset/mysql_510_608_withLabels.mat
+```
+
+More details are in [`docs/data_format.md`](docs/data_format.md).
+
+### 3. Validate the setup
+
+```matlab
+cd('path/to/LoR-lambda-Mon/src')
+validate_lorlambda_mon
+```
+
+### 4. Run the paper experiment
+
+```matlab
+cd('path/to/LoR-lambda-Mon/src')
 LoRlambda_Mon
 ```
 
-### Output
+The runner prints a `results` struct containing the main metrics:
 
-Running the script will generate:
+- sampling rate
+- NMAE
+- precision
+- recall
+- F1 score
+- average CPU overhead for decision, sampling, inference, and model update
 
-1. **Sparse Causal Structure** visualizations
-2. **DAGs** for different metric clusters
-3. **Adjacency matrices** for causal relationships
-4. **Monitoring Results** including:
-   - Sampling rate
-   - CPU time
-   - NMAE (Normalized Mean Absolute Error)
-   - Precision, Recall, F1-score
+## Configuration
 
-### Configuration
+Edit [`src/config.m`](src/config.m) to change dataset paths or algorithm parameters.
 
-The main script uses default parameters that work well for the provided dataset. You can modify the parameters in the `config.m` file:
+Common settings:
 
 ```matlab
-% Dataset configuration
 dataset.path = '../dataset/mysql_510_608_withLabels.mat';
-dataset.batch_size = 100; % T
-dataset.window_size = 23; % w
-dataset.enhanced_window_size = 2201; % w_size
+dataset.csv_path = '../dataset/combined_metrics_510_608_with_labels.csv';
+dataset.batch_size = 100;            % T
+dataset.window_size = 23;            % w
+dataset.enhanced_window_size = 2201; % T*w - T + 1
 
-% Algorithm parameters
-params.theta_r = 5e-6;      % Sampling rate parameter for root metrics
-params.theta_c = 1e-1;      % Sampling rate parameter for child metrics
-params.yita = 1e-6;         % Threshold for subspace estimation
-params.thr_ACE = 0.1;       % Threshold for ACE method
-params.beta = 2;             % Batch size for model updates
-params.als_max_iter = 1000;  % Maximum iterations for ALS
-params.als_tol = 0.001;      % Tolerance for ALS convergence
-params.SPIKE_LIMIT = 0.92;   % Threshold for spike anomalies
-params.DIP_LIMIT = 0.08;     % Threshold for dip anomalies
+params.random_seed = 1;     % Reproducible lambda-sampling randomness
+params.theta_r = 5e-6;      % Root/normal-data sampling parameter
+params.theta_c = 1e-1;      % Child/effect-metric sampling parameter
+params.yita = 1e-6;         % Subspace estimation threshold
+params.beta = 2;            % Model update batch interval
+params.SPIKE_LIMIT = 0.92;  % Cauchy spike threshold
+params.DIP_LIMIT = 0.08;    % Cauchy dip threshold
 ```
 
-## Project Structure
+Set `visualization.enable = false` in `src/config.m` for headless runs.
 
-```
-LoRlambda-Mon/
-├── src/                   % Source code
-│   ├── LoRlambda_Mon.m        % Main script
-│   ├── data_preprocess.m       % Data preprocessing
-│   ├── OMP_ordering_mat_func.m % OMP algorithm
-│   ├── ols3.m                  % Ordinary Least Squares
-│   ├── litekmeans.m            % K-means clustering
-│   ├── cnormalize.m            % Data normalization
-│   ├── subfunc_*.m             % Various subfunctions
-├── dataset/               % Data files
-│   ├── mysql_510_608_withLabels.mat     % Processed dataset
-│   ├── combined_metrics_510_608.csv     % Raw metrics data
-│   ├── combined_metrics_510_608_with_labels.csv % Labeled data
-│   ├── fault_timeline_510_608.csv       % Fault injection timeline
-│   └── *.png                     % Visualization figures
-├── testbed/               % Testbed scripts
-│   ├── fault_orchestrator_paper.sh  % Fault injection script
-│   ├── run_oltpbench.sh             % OLTPBench runner
-│   └── testbed_framework.png        % Testbed architecture
-├── paperID_1224_Appendix.pdf  % Appendix with proofs
-└── README.md                % This file
-```
+## Dataset and testbed
 
-## Dataset
+The experiment dataset contains Prometheus-style MySQL/Kubernetes performance metrics collected from the testbed below.
 
-The collected data is exported as **combine_metrics_510_608.csv**, with fault injection time ranges recorded in **fault_timeline_510_608.csv**. We employ a Cauchy distribution-based anomaly detection method (SIGMOD'18 [1]) to label data points deviating from normal states. The complete labeled dataset is organized as **combine_metrics_510_608_with_labels.csv**, where:
+![Testbed framework](./testbed/testbed_framework.png)
 
-- `label_1`: Fault injection time range
-- `label_2`: Anomaly labels
+The labeled time series visualization marks anomalous periods in red:
 
-This processed dataset serves as input to our framework: `mysql_510_608_withLabels.mat`
+![Time series with labels](./dataset/time_series_visualization_510_608_withLabels.png)
 
-### Dataset Details
+Fault-injection scripts are in [`testbed/`](testbed/):
 
-- **76 performance metrics**, each with corresponding definitions and PromQL queries
-- **Visualization**: The figure below shows the time series data, with red segments indicating anomalies:
+- `run_oltpbench.sh`: launches OLTPBench workload generation.
+- `fault_orchestrator_paper.sh`: injects workload, CPU, and memory faults.
 
-![time_series_visualization_510_608](./dataset/time_series_visualization_510_608.png)
+## Main source files
 
-![time_series_visualization_510_608—_label](./dataset/time_series_visualization_510_608_withLabels.png)
-
-The red color denotes the anomaly.
-
-## Testbed
-
-Our testbed architecture is shown below. OLTPBench deployed on a server accesses the MySQL database running on a Kubernetes cluster. We collect numerous metrics using Prometheus to generate a millisecond-level multi-metric dataset.
-
-![testbed_framework](./testbed/testbed_framework.png)
-
-### Fault Injection
-
-We inject three common types of faults:
-
-- Abnormal workload
-- CPU saturation
-- Memory saturation
-
-The fault injection strategy described in our paper's Evaluation section is implemented in `fault_orchestrator_paper.sh`. Simply run this file after launching OLTPBench `run_oltpbench.sh`.
-
-## Sub-functions
-
-- **`subfunc_clustering_by_SSC.m`**: Performs sparsification using Sparse Subspace Clustering
-- **`subfunc_CausalStructureLearning.m`**: Implements causal structure learning
-- **`subfunc_RCMI_ACE.m`**: Identifies root-cause metrics using ACE method
-- **`subfunc_robust_AnomalyDetect_Cauchy.m`**: Robust anomaly detection based on Cauchy distribution
-- **`subfunc_robust_OAM_LoRLambda.m`**: Implements LoRLambda-sampling (Section 5.1)
-- **`subfunc_robust_OAM_learn_mbp.m`**: Learns Lambda model using EM algorithm
-- **`subfunc_robust_OAM_update_mbp.m`**: Incrementally updates Lambda model with new anomaly data
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+| File | Purpose |
+| --- | --- |
+| `src/LoRlambda_Mon.m` | End-to-end reproduction script and evaluation summary |
+| `src/LoR_lambda_Mon.m` | Core LoRλ-Mon online algorithm |
+| `src/data_preprocess.m` | Metric filtering, Cauchy labeling, normalization, enhanced matrix construction |
+| `src/subfunc_clustering_by_SSC.m` | Sparse subspace clustering |
+| `src/subfunc_CausalStructureLearning.m` | Sparse causal structure learning |
+| `src/subfunc_robust_OAM_LoRLambda_w.m` | Low-rank plus lambda-based adaptive sampling |
 
 ## Citation
 
-If you use this code in your research, please cite our paper:
+If you use this code in research, please cite the paper.  Replace the placeholder fields below with the final publication metadata.
 
-```
-@inproceedings{LoRlambda-Mon,
-  title={$LoR\lambda$-Mon: Low-overhead and Robust QoS Metrics Monitoring based on Sparse Causal Structure},
-  author={Your Name and Co-authors},
-  booktitle={},
-  year={2026}
+```bibtex
+@inproceedings{LoRlambdaMon,
+  title = {$LoR\lambda$-Mon: Low-overhead and Robust QoS Metrics Monitoring based on Sparse Causal Structure},
+  author = {Your Name and Co-authors},
+  booktitle = {To appear},
+  year = {2026}
 }
 ```
 
-## Contributing
+## License
 
-We welcome contributions to improve this project. Please feel free to submit issues and pull requests.
-
-## Appendix
-
-**paperID_1224_Appendix.pdf** contains the proof of Theorem 4.1 (Causal Matrix Completion).
-
+This project is released under the MIT License.  See [`LICENSE`](LICENSE).

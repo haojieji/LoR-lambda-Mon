@@ -1,9 +1,11 @@
 
 
 function [alpha_cau, alpha_his] = subfunc_inferEffect_ALS(x, C, H, als_max_iter, als_tol)
-    
+
     [~,nc] = size(C);
     [~,nh] = size(H);
+    alpha_cau = zeros(nc, 1);
+    alpha_his = zeros(nh, 1);
 
     if size(x,1)<=0 || nc<=0 || nh<=0
         warning(sprintf('alpha_cau alpha_his： x_size=%s, nc=%d, nh=%d', mat2str(length(x)), nc, nh));

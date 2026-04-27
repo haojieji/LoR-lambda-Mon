@@ -1,4 +1,4 @@
-function [G, Pvec] = chol_inc_fun(x,sigma,tol)
+function [G, Pvec] = chol_gauss(x,sigma,tol)
 
 % CHOL_INC_FUN - incomplete Cholesky decomposition of the Gram matrix defined
 %                by data x, with the Gaussiab kernel with width sigma
