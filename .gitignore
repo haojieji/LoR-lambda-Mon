@@ -5,6 +5,8 @@ result/
 
 # MATLAB temporary files
 *.mat
+!dataset/BARO_OB_w7T50.mat
+!dataset/BARO_SS_w7T50.mat
 *.fig
 *.mex*
 *.asv
