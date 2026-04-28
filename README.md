@@ -1,17 +1,17 @@
-# LoRλ-Mon
+# LoRlambda-Mon
 
-LoRλ-Mon is a sparse causal structure-driven adaptive multi-metric monitoring framework.  It is designed to minimize monitoring overhead for massive fine-grained metrics while still effectively observing critical, fleeting anomaly events.
+LoRlambda-Mon is a sparse causal structure-driven adaptive multi-metric monitoring framework. It is designed to minimize monitoring overhead for massive fine-grained metrics while still effectively observing critical, fleeting anomaly events.
 
 The project is organized so readers can reproduce the paper experiment, inspect each algorithm stage, and adapt the code to their own multi-metric monitoring datasets.
 
 ## What the project does
 
-LoRλ-Mon reduces monitoring overhead by deciding **which metric values need to be sampled** and when anomaly-sensitive metrics should be observed more frequently.  It combines:
+LoRlambda-Mon reduces monitoring overhead by deciding **which metric values need to be sampled** and when anomaly-sensitive metrics should be observed more frequently. It combines:
 
-- **Sparse causal structure learning** (**Section 5.1**) to group metrics and learn parent/child relationships.
-- **Anomaly separator** (**Section 5.2**) to separate normal metric dynamics from anomaly-driven observations.
-- **Low-rank sampling** (**Sections 5.3.1 and 6.2**) with a tighter sampling bound than the optimal sampling bound, reducing the overhead of monitoring normal data.
-- **Lambda-based sampling** (**Sections 5.3.2 and 6.2**) based on the observation that anomalies propagate across related performance metrics.  LoRλ-Mon uses a sparse-causal-structure-driven Hawkes process to capture this dynamic anomaly propagation and predict future anomaly probability.
+- **Sparse causal structure learning** to group metrics and learn parent/child relationships.
+- **Anomaly separator** to separate normal metric dynamics from anomaly-driven observations.
+- **Low-rank sampling** with a tighter sampling bound than the optimal sampling bound, reducing the overhead of monitoring normal data.
+- **Lambda-based sampling** based on the observation that anomalies propagate across related performance metrics.
 - **Fine-grained inference** to infer missing fine-grained data via temporal and causal correlations across multiple metrics.
 
 See [`docs/algorithm_overview.md`](docs/algorithm_overview.md) for a code-level walkthrough.
@@ -20,29 +20,29 @@ See [`docs/algorithm_overview.md`](docs/algorithm_overview.md) for a code-level 
 
 ```text
 LoR-lambda-Mon/
-├── README.md
-├── CONTRIBUTING.md
-├── docs/
-│   ├── algorithm_overview.md
-│   └── data_format.md
-├── dataset/
-│   ├── combined_metrics_510_608.csv
-│   ├── combined_metrics_510_608_with_labels.csv
-│   ├── fault_timeline_510_608.csv
-│   └── *.png
-├── src/
-│   ├── config.m                         # Experiment constants
-│   ├── import_dataset_from_csv.m         # Rebuild ignored MAT dataset
-│   ├── validate_lorlambda_mon.m          # Lightweight health check
-│   ├── LoRlambda_Mon.m                   # Reproducible paper experiment runner
-│   ├── LoR_lambda_Mon.m                  # Core online monitoring algorithm
-│   ├── data_preprocess.m                 # Filtering, labeling, normalization
-│   └── subfunc_*.m                       # Algorithm components
-├── testbed/
-│   ├── run_oltpbench.sh
-│   ├── fault_orchestrator_paper.sh
-│   └── testbed_framework.png
-└── paperID_1224_Appendix.pdf
+|-- README.md
+|-- CONTRIBUTING.md
+|-- docs/
+|   |-- algorithm_overview.md
+|   `-- data_format.md
+|-- dataset/
+|   |-- combined_metrics_510_608.csv
+|   |-- combined_metrics_510_608_with_labels.csv
+|   |-- BARO_OB_w7T50.mat      # local, ignored by Git
+|   |-- BARO_SS_w7T50.mat              # local, ignored by Git
+|   `-- *.png
+|-- src/
+|   |-- config.m                         # Algorithm/visualization/logging parameters
+|   |-- import_dataset_from_csv.m         # Import CSV datasets into ignored MAT files
+|   |-- validate_lorlambda_mon.m          # Lightweight health check
+|   |-- LoRlambda_Mon.m                   # Friendly multi-dataset experiment runner
+|   |-- LoR_lambda_Mon.m                  # Core online monitoring algorithm
+|   |-- data_preprocess.m                 # Filtering, labeling, normalization
+|   `-- subfunc_*.m                       # Algorithm components
+`-- testbed/
+    |-- run_oltpbench.sh
+    |-- fault_orchestrator_paper.sh
+    `-- testbed_framework.png
 ```
 
 ## Prerequisites
@@ -62,38 +62,27 @@ git clone <repository-url>
 cd LoR-lambda-Mon
 ```
 
-### 2. Create the MATLAB dataset file
-
-The repository stores CSV files.  The `.mat` file used by MATLAB is generated locally and ignored by Git.
+### 2. Open MATLAB in the source directory
 
 ```matlab
 cd('path/to/LoR-lambda-Mon/src')
-import_dataset_from_csv
 ```
 
-This creates:
-
-```text
-dataset/mysql_510_608_withLabels.mat
-```
-
-More details are in [`docs/data_format.md`](docs/data_format.md).
-
-### 3. Validate the setup
+### 3. Run one of the supported datasets
 
 ```matlab
-cd('path/to/LoR-lambda-Mon/src')
-validate_lorlambda_mon
-```
-
-### 4. Run the paper experiment
-
-```matlab
-cd('path/to/LoR-lambda-Mon/src')
+% Default: OLTP dataset
 LoRlambda_Mon
+
+% Equivalent explicit call
+LoRlambda_Mon('oltp')
+
+% BARO FSE24 microservice datasets
+LoRlambda_Mon('online_boutique')
+LoRlambda_Mon('sock_shop')
 ```
 
-The runner prints a `results` struct containing the main metrics:
+The runner prints and returns a `results` struct containing the main metrics:
 
 - sampling rate
 - NMAE
@@ -102,20 +91,43 @@ The runner prints a `results` struct containing the main metrics:
 - F1 score
 - average CPU overhead for decision, sampling, inference, and model update
 
-## Configuration
-
-Edit [`src/config.m`](src/config.m) to change dataset paths or algorithm parameters.
-
-Common settings:
+### 4. Validate a dataset before running
 
 ```matlab
-dataset.path = '../dataset/mysql_510_608_withLabels.mat';
-dataset.csv_path = '../dataset/combined_metrics_510_608_with_labels.csv';
-dataset.batch_size = 100;            % T
-dataset.window_size = 23;            % w
-dataset.enhanced_window_size = 2201; % T*w - T + 1
+validate_lorlambda_mon('oltp')
+validate_lorlambda_mon('online_boutique')
+validate_lorlambda_mon('sock_shop')
+```
 
-params.random_seed = 1;     % Reproducible lambda-sampling randomness
+### 5. Rebuild MAT files from CSV when needed
+
+The repository stores CSV files where possible. MATLAB `.mat` files are generated locally and ignored by Git.
+
+```matlab
+% Rebuild the default OLTP MAT file from its labeled CSV
+import_dataset_from_csv
+
+% Convert a BARO simple_data.csv file into a directly runnable MAT file
+import_dataset_from_csv('path/to/simple_data.csv', ...
+    '../dataset/BARO_OB_w7T50.mat', ...
+    'baro')
+```
+
+More details are in [`docs/data_format.md`](docs/data_format.md).
+
+## Configuration
+
+Dataset selection is done through the simple running interface:
+
+```matlab
+LoRlambda_Mon                  % OLTP
+LoRlambda_Mon('online_boutique')
+LoRlambda_Mon('sock_shop')
+```
+
+Edit [`src/config.m`](src/config.m) only for algorithm, visualization, or logging parameters. Common settings:
+
+```matlab
 params.theta_r = 5e-6;      % Root/normal-data sampling parameter
 params.theta_c = 1e-1;      % Child/effect-metric sampling parameter
 params.yita = 1e-6;         % Subspace estimation threshold
@@ -128,7 +140,7 @@ Set `visualization.enable = false` in `src/config.m` for headless runs.
 
 ## Dataset and testbed
 
-The experiment dataset contains Prometheus-style MySQL/Kubernetes performance metrics collected from the testbed below.
+The default OLTP dataset contains Prometheus-style OLTP/Kubernetes performance metrics collected from the testbed below.
 
 ![Testbed framework](./testbed/testbed_framework.png)
 
@@ -145,8 +157,8 @@ Fault-injection scripts are in [`testbed/`](testbed/):
 
 | File | Purpose |
 | --- | --- |
-| `src/LoRlambda_Mon.m` | End-to-end reproduction script and evaluation summary |
-| `src/LoR_lambda_Mon.m` | Core LoRλ-Mon online algorithm |
+| `src/LoRlambda_Mon.m` | End-to-end multi-dataset runner and evaluation summary |
+| `src/LoR_lambda_Mon.m` | Core LoRlambda-Mon online algorithm |
 | `src/data_preprocess.m` | Metric filtering, Cauchy labeling, normalization, enhanced matrix construction |
 | `src/subfunc_clustering_by_SSC.m` | Sparse subspace clustering |
 | `src/subfunc_CausalStructureLearning.m` | Sparse causal structure learning |
@@ -154,7 +166,7 @@ Fault-injection scripts are in [`testbed/`](testbed/):
 
 ## Citation
 
-If you use this code in research, please cite the paper.  Replace the placeholder fields below with the final publication metadata.
+If you use this code in research, please cite the paper. Replace the placeholder fields below with the final publication metadata.
 
 ```bibtex
 @inproceedings{LoRlambdaMon,
@@ -167,4 +179,4 @@ If you use this code in research, please cite the paper.  Replace the placeholde
 
 ## License
 
-This project is released under the MIT License.  See [`LICENSE`](LICENSE).
+This project is released under the MIT License. See [`LICENSE`](LICENSE).

@@ -18,9 +18,9 @@
 %   U_W         Per-metric historical subspace basis.
 %   Omega_*     Binary masks for sampled values and detected anomalies.
 %
-% Outputs are intentionally kept compatible with the original experiment
-% scripts.  See docs/algorithm_overview.md for a higher-level description.
-function [X_e_hat,X_e_hat_normal, Omega,Omega_r,Omega_L,Omega_e,Omega_r_e,Omega_L_e, r_ranks, r_estimators, r_iscomplete, IDX_groups, numClusters, B, Ord, eigns, IDX_root, IDX_intermedia, r_incomplete_batchs, Omega_Cauchy_spike, Omega_Cauchy_dip,Omega_Anomalies,Omega_Anomalies_e, Lambda,Lambda_normalize, OAM_mu, OAM_A, OAM_beta, Labels_Anomalies_X_hat, Overhead_cputime_decision, Overhead_cputime_sampling, Overhead_cputime_inference, Overhead_cputime_modelupdate] = LoR_lambda_Mon(X,X_e, w,w_size, T, param, columnIDX, columnNames)
+% Outputs are limited to values used by the runner and evaluation summary.
+% See docs/algorithm_overview.md for a higher-level description.
+function [X_e_hat, X_e_hat_normal, Omega_e, Omega_r_e, Omega_L_e, Omega_Anomalies_e, Times_sample, Overhead_cputime_decision, Overhead_cputime_sampling, Overhead_cputime_inference, Overhead_cputime_modelupdate] = LoR_lambda_Mon(X, X_e, w, w_size, T, param, columnIDX, columnNames)
 [M, N] = size(X_e);
 num_batch = floor(N/T);
 W = [];
@@ -90,6 +90,7 @@ r_estimators = zeros(M, num_batch);
 r_iscomplete = zeros(M, num_batch);
 r_incomplete_batchs = zeros(1, num_batch);
 
+Times_sample = zeros(1,num_batch);
 Overhead_cputime_decision = zeros(1,num_batch);
 Overhead_cputime_sampling = zeros(1,num_batch);
 Overhead_cputime_inference = zeros(1,num_batch);
@@ -170,7 +171,21 @@ for t = 1:num_batch
                     numMetrics_i = length(IDX_i);
                     Ord_i = Ord(i, 1:numMetrics_i);
                     B_i = B(Ord_i, Ord_i);
-                    columnNameIDX = columnIDX(Ord_i);
+                    % data_preprocess returns columnNames already filtered
+                    % to the metric rows used by X/X_e.  In that normal
+                    % path Ord_i indexes columnNames directly.  Keep support
+                    % for older/custom callers that pass an unfiltered
+                    % metric-name vector by using columnIDX only when the
+                    % name vector is large enough for those original metric
+                    % indices.
+                    if numel(columnNames) == M
+                        columnNameIDX = Ord_i;
+                    elseif numel(columnNames) >= max(columnIDX)
+                        columnNameIDX = columnIDX(Ord_i);
+                    else
+                        error(['columnNames has %d entries, which cannot label ' ...
+                               '%d preprocessed metrics.'], numel(columnNames), M);
+                    end
                     
                     subplot(2, ceil(numClusters/2), i);
                     G = digraph(B_i');
@@ -408,6 +423,7 @@ for t = 1:num_batch
                 IDX_root_i = IDX_root(i, 1:num_root_i);
                 IDX_other_i = Ord_i(~ismember(Ord_i, IDX_root_i));
 
+                time_sample = tic;
                 cputime_sampling_start = cputime;
                 % step4. calculate frequency of root metrics
                 for j = 1:size(B_i,1)
@@ -439,6 +455,7 @@ for t = 1:num_batch
                 end
                 cputime_sampling_i = cputime - cputime_sampling_start;
                 Overhead_cputime_sampling(t) = Overhead_cputime_sampling(t) + cputime_sampling_i;
+                Time_sample_t = Time_sample_t + toc(time_sample);
                 % Recovery all root  IDX_root_i: U, X_t_omega
                 cputime_inference_start = cputime;
                 for j = IDX_root_i
@@ -572,6 +589,7 @@ for t = 1:num_batch
         Omega_e(:, (t-1)*T+1 : t*T) = Omega_t;
         Omega(:, (t-w_size+w-1)*T+1 : (t-w_size+w)*T) = Omega_t;
 
+        Times_sample(t) = Time_sample_t/M;
         r_ranks(:,t) = ranks';
 
         r_incomplete_batchs(t) = incomplete_batch;

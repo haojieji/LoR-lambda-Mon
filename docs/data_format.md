@@ -1,53 +1,85 @@
 # Dataset format
 
-The repository tracks CSV files because they are readable and diffable.  MATLAB `.mat` files are ignored by Git and can be regenerated.
+The project supports three datasets through the same MATLAB entry point:
 
-## Bundled files
+```matlab
+LoRlambda_Mon                  % OLTP
+LoRlambda_Mon('online_boutique')
+LoRlambda_Mon('sock_shop')
+```
 
-| File | Purpose |
-| --- | --- |
-| `dataset/combined_metrics_510_608.csv` | Raw metric time series without anomaly labels |
-| `dataset/combined_metrics_510_608_with_labels.csv` | Metric time series plus `label1` and `label2` |
-| `dataset/fault_timeline_510_608.csv` | Fault-injection events used during collection |
-| `dataset/*.png` | Dataset/testbed visualizations for the README |
+MATLAB `.mat` files are ignored by Git because they can be regenerated or copied locally.
 
-## Required MAT variables
+## Supported datasets
 
-`src/data_preprocess.m` expects these variables after loading `dataset/mysql_510_608_withLabels.mat`:
+| Name | Runner argument | Default MAT file | Format |
+| --- | --- | --- | --- |
+| OLTP | `oltp` | `dataset/mysql_510_608_withLabels.mat` | Raw metrics plus labels |
+| Online Boutique | `online_boutique` | `dataset/BARO_OB_w7T50.mat` | Preprocessed BARO MAT |
+| Sock Shop | `sock_shop` | `dataset/BARO_SS_w7T50.mat` | Preprocessed BARO MAT |
 
-| Variable | Shape/type | Description |
-| --- | --- | --- |
-| `dataMatrix` | time-by-metric numeric matrix | Metric values only; timestamp and labels excluded |
-| `columnNames` | string/cell array | Either metric names or the full CSV header |
-| `timestamps` | vector/cell array | Original timestamps, saved for traceability |
-| `label1` | vector | Fault-injection interval labels from the CSV |
-| `label2` | vector | Anomaly labels from the CSV |
+## OLTP CSV and MAT format
 
-## Regenerate the MAT file
+The OLTP CSV layout is:
 
-From MATLAB:
+1. First column: timestamp.
+2. Middle columns: numeric metrics.
+3. Last two columns: `label1` and `label2`.
+
+Regenerate the default OLTP MAT file from MATLAB:
 
 ```matlab
 cd('path/to/LoR-lambda-Mon/src')
 import_dataset_from_csv
 ```
 
-This reads `../dataset/combined_metrics_510_608_with_labels.csv` and writes `../dataset/mysql_510_608_withLabels.mat`.
+The generated MAT file stores:
 
-## Custom dataset checklist
+| Variable | Shape/type | Description |
+| --- | --- | --- |
+| `dataMatrix` | time-by-metric numeric matrix | Metric values only; timestamp and labels excluded |
+| `columnNames` | string/cell array | Full CSV header or metric names |
+| `timestamps` | vector/cell array | Original timestamps |
+| `label1` | vector | Fault-injection interval labels |
+| `label2` | vector | Anomaly labels |
 
-For a new dataset, keep the same broad layout:
+`data_preprocess.m` then filters metrics, creates Cauchy anomaly labels, normalizes metrics, and builds `X_e`.
+
+## BARO CSV and MAT format
+
+The BARO `simple_data.csv` layout is:
 
 1. First column: timestamp.
-2. Middle columns: numeric metrics.
-3. Last two columns: labels (use zeros if labels are unavailable).
-4. No missing values in metrics you want to keep; preprocessing drops metrics containing `NaN`.
-5. At least `T*w` samples, where defaults are `T = 100` and `w = 23`.
+2. Remaining columns: numeric metrics.
+3. No `label1` / `label2` columns are required.
 
-Then call:
+Convert a BARO CSV to a directly runnable MAT file:
 
 ```matlab
-import_dataset_from_csv('path/to/your_labeled_metrics.csv', 'path/to/output.mat')
+import_dataset_from_csv('path/to/simple_data.csv', ...
+    '../dataset/BARO_OB_w7T50.mat', ...
+    'baro')
 ```
 
-Finally update `dataset.path` in `src/config.m` or pass your own data to `LoR_lambda_Mon` directly.
+BARO import uses `T = 50`, `w = 7`, and `max_time_steps = 700` by default. The generated MAT file includes the preprocessed variables required by `LoRlambda_Mon`:
+
+| Variable | Description |
+| --- | --- |
+| `X` | normalized metric matrix |
+| `X_e` | enhanced sliding-window matrix |
+| `Labels_anomalies_X` | Cauchy-based anomaly labels |
+| `X_min`, `X_max`, `X_max_min` | normalization metadata |
+| `columnIDX`, `columnNames` | selected metric indices and labels |
+| `dataMatrix`, `timestamps` | original data retained for traceability |
+
+## Validation
+
+Run these checks after adding or regenerating data files:
+
+```matlab
+validate_lorlambda_mon('oltp')
+validate_lorlambda_mon('online_boutique')
+validate_lorlambda_mon('sock_shop')
+```
+
+The validator checks file existence, required variables, and key dimensions such as `size(X,1) == numel(columnNames)` and `size(X_e,1) == size(X,1)`.

@@ -7,7 +7,7 @@ function [A,B]=tridecomp(W, choice)
 % Courtesy of Matthias Bethge.
     
 if ~exist('choice', 'var')
-    choice='qr'
+    choice='qr';
 end
 
 [m,n]=size(W);

@@ -1,7 +1,7 @@
 % data_preprocess.m
 % Convert the loaded dataset into the matrices expected by LoRlambda-Mon.
 %
-% Required input variables (usually loaded from mysql_510_608_withLabels.mat):
+% Required input variables (usually loaded from the OLTP MAT dataset):
 %   dataMatrix  - time-by-metric numeric matrix
 %   columnNames - metric names, or the original CSV header including timestamp
 %

@@ -97,7 +97,7 @@ for iter = 1:max_iter
     if max(abs(mu_new - OAM_mu)) < epsilon && ...
             max(abs(A_new(:) - OAM_A(:))) < epsilon && ...
             max(abs(beta_new(:) - OAM_beta(:))) < epsilon
-        iter
+%         iter
         break;
     end
 

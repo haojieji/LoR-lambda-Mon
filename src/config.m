@@ -1,21 +1,15 @@
 % LoRlambda-Mon configuration.
 %
-% Keep experiment constants in this file instead of scattering magic numbers
-% across scripts.  Paths are resolved relative to the src/ directory by the
-% runner script LoRlambda_Mon.m.
-
-% Dataset configuration
-dataset = struct();
-dataset.path = '../dataset/mysql_510_608_withLabels.mat';
-dataset.csv_path = '../dataset/combined_metrics_510_608_with_labels.csv';
-dataset.batch_size = 100;            % T: samples in one monitoring batch
-dataset.window_size = 23;            % w: batches in the original window
-dataset.enhanced_window_size = 2201; % w_size = T*w - T + 1
-dataset.max_time_steps = 11600;      % Reproduce the paper experiment slice
+% Dataset selection is intentionally kept in LoRlambda_Mon.m so the public
+% running interface stays simple:
+%   LoRlambda_Mon
+%   LoRlambda_Mon('online_boutique')
+%   LoRlambda_Mon('sock_shop')
+%
+% This file only stores algorithm, visualization, and logging parameters.
 
 % Algorithm parameters
 params = struct();
-params.random_seed = 1;     % Reproducible lambda-sampling randomness
 
 % Sampling rate parameters
 params.theta_r = 5e-6;      % Sampling rate parameter for root metrics

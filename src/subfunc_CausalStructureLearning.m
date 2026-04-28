@@ -1,4 +1,4 @@
-% subfunc_CausalStructureLearning
+﻿% subfunc_CausalStructureLearning
 %
 % Learn the sparse causal structure for each metric cluster.
 %
@@ -39,6 +39,5 @@ function [r_B, r_Stru, r_Ord, r_IDX_root, r_IDX_intermedia] = subfunc_CausalStru
         r_IDX_intermedia_i = r_Ord_i(idx_intermedia_local);
         r_IDX_root(i, 1:length(r_IDX_root_i)) = r_IDX_root_i;
         r_IDX_intermedia(i, 1:length(r_IDX_intermedia_i)) = r_IDX_intermedia_i;
-
     end
 end
