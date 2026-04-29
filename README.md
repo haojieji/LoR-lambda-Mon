@@ -170,7 +170,7 @@ If you use this code in research, please cite the paper. Replace the placeholder
 
 ```bibtex
 @inproceedings{LoRlambdaMon,
-  title = {$LoR\lambda$-Mon: Low-overhead and Robust QoS Metrics Monitoring based on Sparse Causal Structure},
+  title = {LoR$\lambda$-Mon: Data-Efficient Adaptive Monitoring for Fine-Grained Multi-Metric Streams via Structure-Aware and Anomaly-Predictive Sampling},
   author = {Your Name and Co-authors},
   booktitle = {To appear},
   year = {2026}
@@ -179,4 +179,8 @@ If you use this code in research, please cite the paper. Replace the placeholder
 
 ## License
 
-This project is released under the MIT License. See [`LICENSE`](LICENSE).
+This project is released under the MIT License.
+
+Copyright (c) 2026 LoRlambda-Mon Authors
+
+See [`LICENSE`](LICENSE).
