@@ -39,10 +39,6 @@ LoR-lambda-Mon/
 |   |-- LoR_lambda_Mon.m                  # Core online monitoring algorithm
 |   |-- data_preprocess.m                 # Filtering, labeling, normalization
 |   `-- subfunc_*.m                       # Algorithm components
-`-- testbed/
-    |-- run_oltpbench.sh
-    |-- fault_orchestrator_paper.sh
-    `-- testbed_framework.png
 ```
 
 ## Prerequisites
@@ -138,11 +134,9 @@ params.DIP_LIMIT = 0.08;    % Cauchy dip threshold
 
 Set `visualization.enable = false` in `src/config.m` for headless runs.
 
-## Dataset and testbed
+## Dataset
 
-The default OLTP dataset contains Prometheus-style OLTP/Kubernetes performance metrics collected from the testbed below.
-
-![Testbed framework](./testbed/testbed_framework.png)
+The default OLTP dataset contains Prometheus-style OLTP/Kubernetes performance metrics.
 
 The labeled time series visualization marks anomalous periods in red:
 
