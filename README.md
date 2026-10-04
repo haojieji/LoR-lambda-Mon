@@ -1,93 +1,53 @@
-# LoRlambda-Mon
+# CauSample
 
-LoRlambda-Mon is a sparse causal structure-driven adaptive multi-metric monitoring framework. It is designed to minimize monitoring overhead for massive fine-grained metrics while still effectively observing critical, fleeting anomaly events.
+Code, data, and supplementary proofs for **CauSample**, an adaptive metric sampling framework that uses a sparse causal structure (SCS) in two ways:
 
-The project is organized so readers can reproduce the paper experiment, inspect each algorithm stage, and adapt the code to their own multi-metric monitoring datasets.
+- **Causal sampling bound:** local causal correlations guide per-metric sampling frequencies to reduce the samples needed for fine-grained reconstruction.
+- **Anomaly sampling:** directed dependencies guide anomaly propagation modeling and additional sampling to capture transient anomalies.
 
-## What the project does
+**[Supplementary material: appendix.pdf](appendix.pdf)** contains the complete sampling-bound proof and additional mathematical details.
 
-LoRlambda-Mon reduces monitoring overhead by deciding **which metric values need to be sampled** and when anomaly-sensitive metrics should be observed more frequently. It combines:
+## Contents
 
-- **Sparse causal structure learning** to group metrics and learn parent/child relationships.
-- **Anomaly separator** to separate normal metric dynamics from anomaly-driven observations.
-- **Low-rank sampling** with a tighter sampling bound than the optimal sampling bound, reducing the overhead of monitoring normal data.
-- **Lambda-based sampling** based on the observation that anomalies propagate across related performance metrics.
-- **Fine-grained inference** to infer missing fine-grained data via temporal and causal correlations across multiple metrics.
+| Directory or file | Contents |
+| --- | --- |
+| [src/](src/) | MATLAB implementation and data preparation utilities |
+| [dataset/](dataset/README.md) | TPC-C/OLTP trace, fault timeline, and selected Online Boutique and Sock Shop metric data |
+| [docs/algorithm_overview.md](docs/algorithm_overview.md) | Mapping from paper components to implementation files |
+| [docs/data_format.md](docs/data_format.md) | Data formats, preprocessing, and evaluation labels |
+| [appendix.pdf](appendix.pdf) | Supplementary proofs and derivations |
+| [SHA256SUMS](SHA256SUMS) | Checksums for the released data and appendix |
 
-See [`docs/algorithm_overview.md`](docs/algorithm_overview.md) for a code-level walkthrough.
+This artifact provides the implementation, bundled inputs, and supplementary material for inspection. The OB/SS files contain selected preprocessed traces from BARO; the repository does not include the complete baseline and parameter-sweep scripts needed to regenerate every paper figure. Existing MATLAB entry-point names are retained for compatibility.
 
-## Repository layout
-
-```text
-LoR-lambda-Mon/
-|-- README.md
-|-- CONTRIBUTING.md
-|-- docs/
-|   |-- algorithm_overview.md
-|   `-- data_format.md
-|-- dataset/
-|   |-- combined_metrics_510_608.csv
-|   |-- combined_metrics_510_608_with_labels.csv
-|   |-- BARO_OB_w7T50.mat      # local, ignored by Git
-|   |-- BARO_SS_w7T50.mat              # local, ignored by Git
-|   `-- *.png
-|-- src/
-|   |-- config.m                         # Algorithm/visualization/logging parameters
-|   |-- import_dataset_from_csv.m         # Import CSV datasets into ignored MAT files
-|   |-- validate_lorlambda_mon.m          # Lightweight health check
-|   |-- LoRlambda_Mon.m                   # Friendly multi-dataset experiment runner
-|   |-- LoR_lambda_Mon.m                  # Core online monitoring algorithm
-|   |-- data_preprocess.m                 # Filtering, labeling, normalization
-|   `-- subfunc_*.m                       # Algorithm components
-```
-
-## Prerequisites
+## Requirements
 
 - MATLAB R2021b or later.
-- MATLAB toolboxes used by the experiment:
-  - Statistics and Machine Learning Toolbox
-  - Signal Processing Toolbox
-  - Optimization Toolbox
+- Statistics and Machine Learning Toolbox, Signal Processing Toolbox, and Optimization Toolbox.
 
 ## Quick start
 
-### 1. Clone the project
-
-```bash
-git clone <repository-url>
-cd LoR-lambda-Mon
-```
-
-### 2. Open MATLAB in the source directory
+Download the repository and open MATLAB in its `src` directory:
 
 ```matlab
-cd('path/to/LoR-lambda-Mon/src')
+cd('path/to/artifact/src')
+
+% Prepare the bundled OLTP input; the two BARO MAT files are already included.
+prepare_causample_data
+
+% Run a dataset and return its evaluation results.
+results = LoRlambda_Mon('oltp');
+% results = LoRlambda_Mon('online_boutique');
+% results = LoRlambda_Mon('sock_shop');
 ```
 
-### 3. Run one of the supported datasets
+`LoRlambda_Mon.m` is the experiment entry point, and `LoR_lambda_Mon.m` contains the core algorithm. The runner reports sampling ratio, normalized mean absolute error (NMAE), anomaly precision/recall/F1, and processing times. See the [component mapping](docs/algorithm_overview.md) to locate each sampler, reconstruction, and update routine.
 
-```matlab
-% Default: OLTP dataset
-LoRlambda_Mon
+The `.csv.gz` files in [dataset/](dataset/README.md) provide compact downloads for the anonymous mirror. `prepare_causample_data` decompresses the labeled CSV when needed and creates the OLTP MAT file without changing the bundled inputs.
 
-% Equivalent explicit call
-LoRlambda_Mon('oltp')
+## Configuration and data checks
 
-% BARO FSE24 microservice datasets
-LoRlambda_Mon('online_boutique')
-LoRlambda_Mon('sock_shop')
-```
-
-The runner prints and returns a `results` struct containing the main metrics:
-
-- sampling rate
-- NMAE
-- precision
-- recall
-- F1 score
-- average CPU overhead for decision, sampling, inference, and model update
-
-### 4. Validate a dataset before running
+Common parameters and visualization settings are in [src/config.m](src/config.m). Dataset-specific batch/window sizes and overrides are in [src/LoRlambda_Mon.m](src/LoRlambda_Mon.m). Set `visualization.enable = false` for runs without plots.
 
 ```matlab
 validate_lorlambda_mon('oltp')
@@ -95,86 +55,12 @@ validate_lorlambda_mon('online_boutique')
 validate_lorlambda_mon('sock_shop')
 ```
 
-### 5. Rebuild MAT files from CSV when needed
+These utilities check input availability and matrix dimensions. They are separate from running the sampling algorithm. The release packaging has been checked for file integrity and links; full MATLAB experiments were not rerun during packaging.
 
-The repository stores CSV files where possible. MATLAB `.mat` files are generated locally and ignored by Git.
+## Data sources
 
-```matlab
-% Rebuild the default OLTP MAT file from its labeled CSV
-import_dataset_from_csv
+The OLTP data were collected using the TPC Benchmark C (TPC-C) workload. Online Boutique and Sock Shop inputs are selected metric traces from the [BARO artifact](https://github.com/phamquiluan/baro). The [dataset inventory](dataset/README.md) records the files and dimensions, and the [data-format guide](docs/data_format.md) explains the labels used by the included evaluator.
 
-% Convert a BARO simple_data.csv file into a directly runnable MAT file
-import_dataset_from_csv('path/to/simple_data.csv', ...
-    '../dataset/BARO_OB_w7T50.mat', ...
-    'baro')
-```
+## License and attribution
 
-More details are in [`docs/data_format.md`](docs/data_format.md).
-
-## Configuration
-
-Dataset selection is done through the simple running interface:
-
-```matlab
-LoRlambda_Mon                  % OLTP
-LoRlambda_Mon('online_boutique')
-LoRlambda_Mon('sock_shop')
-```
-
-Edit [`src/config.m`](src/config.m) only for algorithm, visualization, or logging parameters. Common settings:
-
-```matlab
-params.theta_r = 5e-6;      % Root/normal-data sampling parameter
-params.theta_c = 1e-1;      % Child/effect-metric sampling parameter
-params.yita = 1e-6;         % Subspace estimation threshold
-params.beta = 2;            % Model update batch interval
-params.SPIKE_LIMIT = 0.92;  % Cauchy spike threshold
-params.DIP_LIMIT = 0.08;    % Cauchy dip threshold
-```
-
-Set `visualization.enable = false` in `src/config.m` for headless runs.
-
-## Dataset
-
-The default OLTP dataset contains Prometheus-style OLTP/Kubernetes performance metrics.
-
-The labeled time series visualization marks anomalous periods in red:
-
-![Time series with labels](./dataset/time_series_visualization_510_608_withLabels.png)
-
-Fault-injection scripts are in [`testbed/`](testbed/):
-
-- `run_oltpbench.sh`: launches OLTPBench workload generation.
-- `fault_orchestrator_paper.sh`: injects workload, CPU, and memory faults.
-
-## Main source files
-
-| File | Purpose |
-| --- | --- |
-| `src/LoRlambda_Mon.m` | End-to-end multi-dataset runner and evaluation summary |
-| `src/LoR_lambda_Mon.m` | Core LoRlambda-Mon online algorithm |
-| `src/data_preprocess.m` | Metric filtering, Cauchy labeling, normalization, enhanced matrix construction |
-| `src/subfunc_clustering_by_SSC.m` | Sparse subspace clustering |
-| `src/subfunc_CausalStructureLearning.m` | Sparse causal structure learning |
-| `src/subfunc_robust_OAM_LoRLambda_w.m` | Low-rank plus lambda-based adaptive sampling |
-
-## Citation
-
-If you use this code in research, please cite the paper. Replace the placeholder fields below with the final publication metadata.
-
-```bibtex
-@inproceedings{LoRlambdaMon,
-  title = {LoR$\lambda$-Mon: Data-Efficient Adaptive Monitoring for Fine-Grained Multi-Metric Streams via Structure-Aware and Anomaly-Predictive Sampling},
-  author = {Your Name and Co-authors},
-  booktitle = {To appear},
-  year = {2026}
-}
-```
-
-## License
-
-This project is released under the MIT License.
-
-Copyright (c) 2026 LoRlambda-Mon Authors
-
-See [`LICENSE`](LICENSE).
+See [LICENSE](LICENSE) for the project license. Existing third-party notices in the source files are retained; their attribution and applicable terms remain in effect.

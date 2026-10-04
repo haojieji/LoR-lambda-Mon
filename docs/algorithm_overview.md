@@ -1,68 +1,48 @@
-# Algorithm overview
+# CauSample algorithm overview
 
-LoRλ-Mon is a sparse causal structure-driven adaptive multi-metric monitoring pipeline.  The goal is to minimize monitoring overhead for massive fine-grained metrics while still observing critical, short-lived anomaly events.
+CauSample combines a Low-Rank Sampler and an Anomaly Sampler to collect performance metrics and reconstruct fine-grained data. Both samplers use the same sparse causal structure (SCS), which groups locally correlated metrics and identifies parent-child dependencies. The MATLAB entry points retain their historical `LoRlambda_Mon` names.
 
-## Notation
+## Two sampling paths
 
-| Symbol | Meaning |
+The **Low-Rank Sampler** uses normal metric variations to determine base sampling frequencies. Root metrics use temporal history; child metrics use their local causal dependencies. These representations guide per-metric sampling and support reconstruction of unsampled values.
+
+The **Anomaly Sampler** learns anomaly propagation through self and parent excitation using an SCS-constrained multivariate Hawkes process. Its predicted event intensities guide additional sampling around likely anomalies. The Composite Sampler combines these observations with the base samples, and newly collected anomalies inform subsequent predictions.
+
+SCS extraction uses the original, fully collected training data. The Anomaly Detector then prepares normal data and anomaly events for the two sampling paths. After collection, the Fine-Grained Reconstructor combines temporal and causal information and restores sampled values in the final output.
+
+## Components and paper sections
+
+All source files below are in `src/`.
+
+| Component | Paper section | Main source files |
+| --- | --- | --- |
+| Sparse Causal Structure Extractor | 4.1 | [subfunc_clustering_by_SSC.m](../src/subfunc_clustering_by_SSC.m), [OMP_mat_func.m](../src/OMP_mat_func.m), [subfunc_CausalStructureLearning.m](../src/subfunc_CausalStructureLearning.m), [subfunc_CausalDiscovery_Dlingam.m](../src/subfunc_CausalDiscovery_Dlingam.m) |
+| Anomaly Detector | Within 4.1 | [subfunc_robust_AnomalyDetect_Cauchy.m](../src/subfunc_robust_AnomalyDetect_Cauchy.m), [subfunc_robust_AnomalyDetect_Cauchy_w.m](../src/subfunc_robust_AnomalyDetect_Cauchy_w.m) |
+| Low-Rank Sampler | 4.2 | Frequency calculation and temporal-rank bookkeeping in [LoR_lambda_Mon.m](../src/LoR_lambda_Mon.m) |
+| Anomaly Sampler | 4.3 | [subfunc_robust_OAM_learn_mbp.m](../src/subfunc_robust_OAM_learn_mbp.m) |
+| Composite Sampler | 4.4 | [subfunc_robust_OAM_LoRLambda_w.m](../src/subfunc_robust_OAM_LoRLambda_w.m), [Get_Array_equalInterval.m](../src/Get_Array_equalInterval.m) |
+| Fine-Grained Reconstructor | 4.5 | Reconstruction blocks in [LoR_lambda_Mon.m](../src/LoR_lambda_Mon.m), [subfunc_inferEffect_ALS.m](../src/subfunc_inferEffect_ALS.m), [subfunc_enhance_U.m](../src/subfunc_enhance_U.m) |
+| Model Updater | 4.6 | [subfunc_robust_OAM_update_mbp.m](../src/subfunc_robust_OAM_update_mbp.m) |
+
+## Data and notation
+
+| Symbol in code | Meaning |
 | --- | --- |
 | `M` | Number of metrics after preprocessing |
-| `N` | Number of time steps in the original timeline |
-| `T` | Samples per monitoring batch |
-| `w` | Number of batches in the original training window |
-| `w_size` | Number of enhanced training batches (`T*w - T + 1`) |
-| `X` | Normalized `M × N` metric matrix |
-| `X_e` | Enhanced matrix used by the sliding-window model |
-| `Omega` | Binary mask indicating sampled points |
-| `B` | Learned sparse causal adjacency matrix |
+| `X` | Normalized metric-by-time matrix |
+| `T` | Number of time steps per batch |
+| `w` | Training-window batch count, corresponding to paper `W` |
+| `w_size` | Enhanced training-batch count, `T*w - T + 1` |
+| `X_e` | Enhanced training segments followed by online batches |
+| `B`, `Stru`, `Ord` | Weighted adjacency, binary adjacency, and causal order |
+| `U_W` | Historical temporal columns used by reconstruction |
+| `Omega_e` | Sampling matrix for observations retained as normal values |
+| `Omega_Anomalies_e` | Sampling matrix for collected anomalies |
 
-## Pipeline and paper sections
+## Entry points and evaluation
 
-```mermaid
-flowchart TD
-    A[CSV or MAT dataset] --> B[Preprocess and normalize metrics]
-    B --> C[Build enhanced sliding-window matrix]
-    C --> D["Sparse causal structure learning<br/>(Section 5.1)"]
-    D --> E["Anomaly separator<br/>(Section 5.2)"]
-    E --> F["Low-rank sampling<br/>(Sections 5.3.1 and 6.2)"]
-    E --> G["Lambda-based sampling<br/>(Sections 5.3.2 and 6.2)"]
-    F --> H[Online adaptive sampling]
-    G --> H
-    H --> I[Fine-grained inference]
-    I --> J[Sampling rate, NMAE, precision/recall/F1]
-```
+[LoRlambda_Mon.m](../src/LoRlambda_Mon.m) selects a dataset, loads [config.m](../src/config.m), invokes preprocessing and the core algorithm, and reports sampling ratio, NMAE, anomaly precision/recall/F1, and timing measurements. These evaluation categories are described in Section 5.1.
 
-## Stage summary
+[import_dataset_from_csv.m](../src/import_dataset_from_csv.m) converts input files. [data_preprocess.m](../src/data_preprocess.m) prepares metric matrices, labels, normalization information, and enhanced training segments. [validate_lorlambda_mon.m](../src/validate_lorlambda_mon.m) checks dataset availability and dimensions.
 
-| Stage | Paper section | Purpose |
-| --- | --- | --- |
-| Sparse causal structure learning | Section 5.1 | Learn metric clusters and sparse parent/child relationships across metrics. |
-| Anomaly separator | Section 5.2 | Separate normal metric dynamics from anomaly-driven observations. |
-| Low-rank sampling | Sections 5.3.1 and 6.2 | Use a tighter sampling bound than the optimal sampling bound to reduce normal-data monitoring overhead. |
-| Lambda-based sampling | Sections 5.3.2 and 6.2 | Model anomaly propagation across related metrics with an SCS-driven Hawkes process and predict future anomaly probability. |
-| Fine-grained inference | Inference module | Infer missing fine-grained data via temporal and causal correlations across multiple metrics. |
-
-## Source-code map
-
-| Stage | Main files |
-| --- | --- |
-| Entry point and evaluation | `src/LoRlambda_Mon.m` |
-| Core online algorithm | `src/LoR_lambda_Mon.m` |
-| Dataset conversion | `src/import_dataset_from_csv.m` |
-| Preprocessing and enhanced matrix construction | `src/data_preprocess.m` |
-| Sparse subspace clustering | `src/subfunc_clustering_by_SSC.m`, `src/OMP_ordering_mat_func.m` |
-| Sparse causal structure learning | `src/subfunc_CausalStructureLearning.m`, `src/subfunc_CausalDiscovery_Dlingam.m` |
-| Anomaly separator / robust anomaly detection | `src/subfunc_robust_AnomalyDetect_Cauchy*.m` |
-| Lambda model learning/update | `src/subfunc_robust_OAM_learn_mbp.m`, `src/subfunc_robust_OAM_update_mbp.m` |
-| Low-rank plus lambda-based adaptive sampling | `src/subfunc_robust_OAM_LoRLambda_w.m` |
-| Fine-grained inference | `src/subfunc_inferEffect_ALS.m` and the inference blocks in `src/LoR_lambda_Mon.m` |
-
-## Reading order for new contributors
-
-1. Read `README.md` for setup and expected outputs.
-2. Open `src/config.m` to understand experiment constants.
-3. Read `src/data_preprocess.m` to see the exact input matrix format.
-4. Read `src/LoRlambda_Mon.m` for the experiment flow and metrics.
-5. Read `src/LoR_lambda_Mon.m` only after the high-level flow is clear.
-
-The core function has many outputs to preserve compatibility with the original paper experiment.  If you build new experiments, prefer collecting only the fields you need into a smaller result struct.
+See the [README](../README.md) for usage and [data format guide](data_format.md) for input requirements. Existing third-party research attributions and source notices remain applicable to the SSC/OMP, spectral clustering, KernelICA, and other included helpers.

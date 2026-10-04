@@ -1,12 +1,13 @@
 # Contributing
 
-Thanks for improving LoRlambda-Mon.  This project accompanies a research paper, so please keep changes reproducible and easy to audit.
+Thanks for improving CauSample.  This project accompanies a research paper, so please keep changes reproducible and easy to audit.
 
 ## Before opening a pull request
 
 1. Run the lightweight validation:
    ```matlab
    cd src
+   prepare_causample_data
    validate_lorlambda_mon
    ```
 2. If you changed the algorithm, run the full experiment:
