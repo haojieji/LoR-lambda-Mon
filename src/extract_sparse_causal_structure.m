@@ -1,19 +1,14 @@
-﻿% subfunc_CausalStructureLearning
-%
-% Learn the sparse causal structure for each metric cluster.
-%
-% Input:
-%   p_groups      Cluster assignment for each metric
-%   p_numClusters Number of clusters
-%   W             Training window, M-by-time
-%
-% Output:
-%   r_B              Weighted causal adjacency matrix
-%   r_Stru           Binary causal adjacency matrix
-%   r_Ord            Metric order in each cluster
-%   r_IDX_root       Metrics with no parents in each learned DAG
-%   r_IDX_intermedia Metrics with both parents and children in each DAG
-function [r_B, r_Stru, r_Ord, r_IDX_root, r_IDX_intermedia] = subfunc_CausalStructureLearning(p_groups, p_numClusters, W)
+function [r_B, r_Stru, r_Ord, r_IDX_root, r_IDX_intermedia] = ...
+    extract_sparse_causal_structure(p_groups, p_numClusters, W)
+% EXTRACT_SPARSE_CAUSAL_STRUCTURE Discover dependencies within metric groups.
+%   Sparse Causal Structure Extractor, Step 2 (Section 4.1).
+%   Inputs: p_groups contains metric cluster assignments, p_numClusters is
+%   their count, and W contains the original metric-by-time training data.
+%   Outputs: r_B contains causal weights (row m, column p means p -> m),
+%   r_Stru is the binary adjacency, and r_Ord stores within-cluster orders.
+%   r_IDX_root lists root metrics; r_IDX_intermedia lists metrics with both
+%   parents and children. Zero entries pad the per-cluster output arrays.
+
     M = size(W,1);
     r_B = zeros(M, M);
     r_Stru = zeros(M, M);
@@ -23,7 +18,7 @@ function [r_B, r_Stru, r_Ord, r_IDX_root, r_IDX_intermedia] = subfunc_CausalStru
     r_IDX_intermedia = zeros(p_numClusters, M);
     for i = 1:p_numClusters
         IDX_i = find(p_groups' == i);
-        [r_Stru_i, r_B_i, r_Ord_i] = subfunc_CausalDiscovery_Dlingam(IDX_i, W);
+        [r_Stru_i, r_B_i, r_Ord_i] = discover_causal_dependencies(IDX_i, W);
 
         r_B(r_Ord_i, r_Ord_i) = r_B_i;
         r_Stru(r_Ord_i, r_Ord_i) = r_Stru_i;

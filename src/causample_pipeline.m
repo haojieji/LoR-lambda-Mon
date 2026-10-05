@@ -1,49 +1,62 @@
-% LoR_lambda_Mon
-% Core implementation of LoRlambda-Mon.
+function [X_e_hat, X_e_hat_normal, Omega_e, Omega_r_e, Omega_L_e, Omega_Anomalies_e, Times_sample, ...
+    Overhead_cputime_decision, Overhead_cputime_sampling, Overhead_cputime_reconstruction, ...
+    Overhead_cputime_modelupdate] = ...
+    causample_pipeline(X, X_e, w, w_size, T, param, columnIDX, columnNames)
+% CAUSAMPLE_PIPELINE Coordinate the components of CauSample.
 %
-% Inputs
-%   X           M-by-N matrix of normalized metrics.
-%   X_e         Enhanced M-by-N_e matrix used by the sliding-window model.
-%   w           Number of batches in the original training window.
-%   w_size      Number of batches in the enhanced training window.
-%   T           Samples per batch.
-%   param       Algorithm parameters from config.m.
-%   columnIDX   Indices of metrics that survived preprocessing.
-%   columnNames Metric names used only for visualization labels.
+%   Offline: extract the SCS from the original training data, separate
+%   anomalies, prepare low-rank representations, and learn the anomaly model.
+%   Online: update temporal ranks, combine base and anomaly-guided sampling,
+%   reconstruct each batch, and update the anomaly model from sampled events.
 %
-% Important internal variables
-%   W           Current enhanced training window, M-by-(w_size*T).
-%   B           Learned sparse causal adjacency matrix.
-%   Ord         Topological/causal ordering of metrics in each cluster.
-%   U_W         Per-metric historical subspace basis.
-%   Omega_*     Binary masks for sampled values and detected anomalies.
+%   Inputs
+%     X           Normalized metric matrix on the original timeline (M-by-N).
+%     X_e         Self-embedded training data followed by online batches.
+%     w           Training-window length in batches (paper W).
+%     w_size      Number of self-embedded training segments.
+%     T           Number of time steps per batch.
+%     param       Parameters from causample_config.
+%     columnIDX   Retained metric indices in the input data.
+%     columnNames Metric names used for plot labels.
 %
-% Outputs are limited to values used by the runner and evaluation summary.
-% See docs/algorithm_overview.md for a higher-level description.
-function [X_e_hat, X_e_hat_normal, Omega_e, Omega_r_e, Omega_L_e, Omega_Anomalies_e, Times_sample, Overhead_cputime_decision, Overhead_cputime_sampling, Overhead_cputime_inference, Overhead_cputime_modelupdate] = LoR_lambda_Mon(X, X_e, w, w_size, T, param, columnIDX, columnNames)
+%   Internal notation
+%     W           Current data window; unlike paper W, this is a matrix.
+%     B           Causal weight matrix; B(m,p) denotes p -> m (paper W).
+%     Stru, Ord   Binary causal adjacency and within-cluster order.
+%     U_W         Historical columns spanning each metric's temporal subspace.
+%     ranks       Per-metric temporal-rank estimates.
+%     Omega_*     Binary sampling or anomaly indicator matrices.
+%     anomaly_*   Hawkes background, excitation, and decay parameters.
+%     Lambda      Anomaly occurrence rates before normalization.
+%     Lambda_normalize  Corresponding normalized anomaly probabilities.
+%
+%   Outputs include reconstructed data, sampling matrices, and timings.
+%   The _e suffix denotes the self-embedded timeline. See src/README.md
+%   and docs/algorithm_overview.md for the paper-to-code map.
+
 [M, N] = size(X_e);
 num_batch = floor(N/T);
 W = [];
 W_idx = [];
 
-% Subspace of each metric
-U_W = zeros(T,w_size,M); 
-U_W_idx = zeros(M, w_size); 
+%% Low-Rank Sampler: temporal history and rank state (Section 4.2)
+U_W = zeros(T,w_size,M);
+U_W_idx = zeros(M, w_size);
 U_W_basis = zeros(T,w_size,M);
 U_W_basis_idx = zeros(M,w_size);
 ranks = zeros(1,M);
-U_W_union = []; 
+U_W_union = [];
 U_W_union_idx = [];
 
 beta_count = 0;
 incomplete_batch = 0;
 
-% Cauchy CDF-based Anomaly Detection
+% Anomaly Detector: robust Cauchy statistics.
 Cauchy_MEDIANs = zeros(1, M);
 Cauchy_MADs = zeros(1, M);
 Cauchy_Trans = @(x, m) (x >= m) .* x + ...
-                       (x < m) .* ( (2*m/pi) .* tan( (pi*(x - m))./(2*m + eps) ) + m ); 
-% Return results
+                       (x < m) .* ( (2*m/pi) .* tan( (pi*(x - m))./(2*m + eps) ) + m );
+% Allocate reconstructed values and sampling matrices.
 X_e_hat = zeros(M,N);
 X_e_hat_normal = zeros(M,N);
 Omega_e = zeros(M,N);
@@ -60,14 +73,14 @@ Omega_Cauchy_dip = zeros(size(X));
 Omega_Anomalies = zeros(size(X));
 Labels_Anomalies_X_hat = zeros(size(X));
 
-% Online anomaly monitoring (lambda model).
-OAM_max_iter = 100;
-OAM_epsilon = 1e-3;
-if isfield(param, 'OAM_max_iter')
-    OAM_max_iter = param.OAM_max_iter;
+% Anomaly Sampler: Hawkes parameters and EM settings.
+anomaly_max_iter = 100;
+anomaly_tolerance = 1e-3;
+if isfield(param, 'anomaly_max_iter')
+    anomaly_max_iter = param.anomaly_max_iter;
 end
-if isfield(param, 'OAM_epsilon')
-    OAM_epsilon = param.OAM_epsilon;
+if isfield(param, 'anomaly_tolerance')
+    anomaly_tolerance = param.anomaly_tolerance;
 end
 
 enableVisualization = true;
@@ -79,8 +92,8 @@ verbose = true;
 if isfield(param, 'verbose')
     verbose = param.verbose;
 end
-Lambda = zeros(size(X)); 
-Lambda_normalize = zeros(size(X)); 
+Lambda = zeros(size(X));
+Lambda_normalize = zeros(size(X));
 events = cell(M,1);
 
 r_ranks = zeros(M, num_batch);
@@ -93,7 +106,7 @@ r_incomplete_batchs = zeros(1, num_batch);
 Times_sample = zeros(1,num_batch);
 Overhead_cputime_decision = zeros(1,num_batch);
 Overhead_cputime_sampling = zeros(1,num_batch);
-Overhead_cputime_inference = zeros(1,num_batch);
+Overhead_cputime_reconstruction = zeros(1,num_batch);
 Overhead_cputime_modelupdate = zeros(1,num_batch);
 
 for t = 1:num_batch
@@ -101,7 +114,7 @@ for t = 1:num_batch
         fprintf('Processing batch %d/%d\n', t, num_batch);
     end
     W_idx = [W_idx t];
-    % Training Stage
+    %% Offline preparation: fully collected history window
     if t<=w_size
         X_t = X_e(:,(t-1)*T+1 : t*T);
         W(:,(t-1)*T+1 : t*T) = X_t;
@@ -118,7 +131,7 @@ for t = 1:num_batch
             P_UWbasis_i = U_W_basis_i * pinv(U_W_basis_i);
             estimator = (norm(X_t_i - P_UWbasis_i * X_t_i)^2) / (norm(X_t_i)^2+eps);
             r_estimators(i,t) = estimator;
-            
+
             if estimator > param.yita
                 r_i = r_i + 1;
                 U_W_basis(:, r_i, i) = X_t_i;
@@ -128,33 +141,33 @@ for t = 1:num_batch
         end
 
         if t==w_size
-            % Structure：
+            % Sparse Causal Structure Extractor: use original training data.
             X_train = X(:,1:w*T);
-            [IDX_groups, numClusters, eigns,~] = subfunc_clustering_by_SSC(X_train);
-            [B, Stru, Ord, IDX_root, IDX_intermedia] = subfunc_CausalStructureLearning(IDX_groups, numClusters, X_train);
+            [IDX_groups, numClusters, eigns,~] = cluster_correlated_metrics(X_train);
+            [B, Stru, Ord, IDX_root, IDX_intermedia] = extract_sparse_causal_structure(IDX_groups, numClusters, X_train);
 
-            % Model：
-            [W, U_W, Omega_Cauchy_spike_e, Omega_Cauchy_dip_e, Cauchy_MEDIANs, Cauchy_MADs] = subfunc_robust_AnomalyDetect_Cauchy(W, U_W, param.SPIKE_LIMIT, param.DIP_LIMIT, Omega_Cauchy_spike_e, Omega_Cauchy_dip_e, Cauchy_Trans);
+            % Anomaly Detector: prepare normal data and anomaly events.
+            [W, U_W, Omega_Cauchy_spike_e, Omega_Cauchy_dip_e, Cauchy_MEDIANs, Cauchy_MADs] = detect_training_anomalies(W, U_W, param.SPIKE_LIMIT, param.DIP_LIMIT, Omega_Cauchy_spike_e, Omega_Cauchy_dip_e, Cauchy_Trans);
             U_W_union = U_W;
             Omega_Anomalies_e = double(Omega_Cauchy_spike_e | Omega_Cauchy_dip_e);
             Omega_e = Omega_e - Omega_Anomalies_e;
             X_e_hat_normal(:,1:w_size*T) = W;
 
-            [X_train, Omega_Cauchy_spike, Omega_Cauchy_dip, Cauchy_MEDIANs, Cauchy_MADs, ~] = subfunc_robust_AnomalyDetect_Cauchy_w(X_train, param.SPIKE_LIMIT, param.DIP_LIMIT, Omega_Cauchy_spike, Omega_Cauchy_dip, Cauchy_Trans);
+            [X_train, Omega_Cauchy_spike, Omega_Cauchy_dip, Cauchy_MEDIANs, Cauchy_MADs, ~] = detect_window_anomalies(X_train, param.SPIKE_LIMIT, param.DIP_LIMIT, Omega_Cauchy_spike, Omega_Cauchy_dip, Cauchy_Trans);
             Omega(:,1:w*T) = 1;
             Omega_Anomalies = double(Omega_Cauchy_spike | Omega_Cauchy_dip);
 
-            % 2.1 Learning MBP model from training anamolaes data
-            [OAM_mu, OAM_A, OAM_beta,S_mu,S_A,S_beta, events, Par] = subfunc_robust_OAM_learn_mbp(Omega_Anomalies, w*T, M, OAM_max_iter, OAM_epsilon, Stru);
+            % Anomaly Sampler: learn SCS-constrained propagation parameters.
+            [anomaly_mu, anomaly_A, anomaly_beta,S_mu,S_A,S_beta, events, Par] = learn_anomaly_model(Omega_Anomalies, w*T, M, anomaly_max_iter, anomaly_tolerance, Stru);
             for i = 1:M
                 for j = 1:w*T
                     % lambda_i(j)
-                    lambda_i_j = OAM_mu(i);
+                    lambda_i_j = anomaly_mu(i);
                     for m_prime = Par{i}
                         past_events = events{m_prime}(events{m_prime}<=j);
                         if ~isempty(past_events)
                             dt = j-past_events;
-                            contrib = OAM_A(i, m_prime) * OAM_beta(i, m_prime) * exp(-OAM_beta(i, m_prime)*dt);
+                            contrib = anomaly_A(i, m_prime) * anomaly_beta(i, m_prime) * exp(-anomaly_beta(i, m_prime)*dt);
                             lambda_i_j = lambda_i_j + sum(contrib);
                         end
                     end
@@ -171,7 +184,7 @@ for t = 1:num_batch
                     numMetrics_i = length(IDX_i);
                     Ord_i = Ord(i, 1:numMetrics_i);
                     B_i = B(Ord_i, Ord_i);
-                    % data_preprocess returns columnNames already filtered
+                    % preprocess_metric_data returns columnNames already filtered
                     % to the metric rows used by X/X_e.  In that normal
                     % path Ord_i indexes columnNames directly.  Keep support
                     % for older/custom callers that pass an unfiltered
@@ -186,19 +199,19 @@ for t = 1:num_batch
                         error(['columnNames has %d entries, which cannot label ' ...
                                '%d preprocessed metrics.'], numel(columnNames), M);
                     end
-                    
+
                     subplot(2, ceil(numClusters/2), i);
                     G = digraph(B_i');
                     h=plot(G, 'Layout', 'layered', 'NodeLabel', columnNames(columnNameIDX), 'ArrowSize', 12, 'LineWidth', 1.5, 'NodeColor', [0.2 0.6 1]);
                     title(['DAG of cluster ', num2str(i)])
-                    ranks_Ord = ranks(Ord_i); 
-                    rank_causal = 0; 
+                    ranks_Ord = ranks(Ord_i);
+                    rank_causal = 0;
                     for j = 1:size(B_i,1)
                         rank_causal = max(rank_causal, length(find(B_i(j,:)>0)));
                     end
                     ranks_Ord_str = strjoin(string(ranks_Ord), ', ');
                     legend_text = sprintf('causal rank=%d, temporal ranks=[%s], svd rank=%d', rank_causal, ranks_Ord_str, rank_M_svd);
-                    
+
                     legend(h, legend_text, 'Location', 'best');
                 end
                 figure;
@@ -207,9 +220,9 @@ for t = 1:num_batch
                     numMetrics_i = length(IDX_i);
                     Ord_i = Ord(i, 1:numMetrics_i);
                     B_i = B(Ord_i, Ord_i);
-                    
+
                     subplot(2, ceil(numClusters/2), i);
-                    heatmap(B_i, 'XLabel', 'parent', 'YLabel', 'child', 'Title', 'adjacent matrix');
+                    heatmap(B_i, 'XLabel', 'parent', 'YLabel', 'child', 'Title', 'Causal weight matrix');
                     colormap jet;
                     colorbar;
                 end
@@ -217,16 +230,16 @@ for t = 1:num_batch
         end
         r_iscomplete(:,t) = 1;
     else
-        % Testing Stage
+        %% Online sampling and reconstruction: process the next batch
         X_t = X_e(:, (t-1)*T+1 : t*T);
-        % step1. update Window data W, W_idx, U_W, U_W_idx, B
-        % Update W:
+        % Low-Rank Sampler: advance the window and update temporal ranks.
+        % Remove the oldest batch from the data window.
         cputime_decision_start = cputime;
         idx_oldest = W_idx(1);
-        W_idx = W_idx(2:end); 
-        W(:, (size(W,2)+1):(size(W,2)+T) ) = X_t; 
-        W = W(:, T+1:end); 
-        % Update U_W:
+        W_idx = W_idx(2:end);
+        W(:, (size(W,2)+1):(size(W,2)+T) ) = X_t;
+        W = W(:, T+1:end);
+        % Remove expired historical columns and update their rank estimates.
         for i = 1:M
             temp = length( find(U_W_idx(i,:)~=0) );
             if temp > 0
@@ -250,10 +263,10 @@ for t = 1:num_batch
 
         ranks = ranks + 1;
         Overhead_cputime_decision(t) = cputime - cputime_decision_start;
-        
+
         Time_sample_t = 0;
-        
-        % step2. assume cluster and causal structure is stable
+
+        % Reuse the learned SCS and initialize batch-level sampling matrices.
         Omega_t = zeros(M, T);
         Omega_t_r = zeros(M, T);
         Omega_t_L = zeros(M, T);
@@ -265,6 +278,7 @@ for t = 1:num_batch
         new_events = cell(M,1);
 
         % *******************************************************************************
+        % Collect full batches when the current representation is insufficient.
         if incomplete_batch > 0
             %
             cputime_sampling_start = cputime;
@@ -273,7 +287,7 @@ for t = 1:num_batch
             X_e_hat_t_normal = X_t;
             beta_count = beta_count+1;
             Overhead_cputime_sampling(t) = cputime - cputime_sampling_start;
-            % 
+            %
             cputime_decision_start = cputime;
             for i = 1:M
                 temp = length(find(U_W_idx(i,:)~=0));
@@ -298,13 +312,13 @@ for t = 1:num_batch
             X_e_hat(:, (t-1)*T+1 : t*T) = X_e_hat_t;
             if beta_count == param.beta || t == num_batch
 
-                % Cauchy-->AD-->events-->U_W
-                [W, U_W_union, ~, ~, Cauchy_MEDIANs,Cauchy_MADs,events,new_events,Omega_Cauchy] = subfunc_robust_AnomalyDetect_Cauchy_Xt_w(W, U_W_union, U_W_union_idx, beta_count, param.SPIKE_LIMIT, param.DIP_LIMIT, Cauchy_MEDIANs, Cauchy_MADs, Cauchy_Trans, T,t,w_size,w, events,new_events, Omega_e,Omega_Anomalies_e,X_e_hat, W_idx);
+                % Separate recent anomalies and update event/history data.
+                [W, U_W_union, ~, ~, Cauchy_MEDIANs,Cauchy_MADs,events,new_events,Omega_Cauchy] = detect_sampled_anomalies(W, U_W_union, U_W_union_idx, beta_count, param.SPIKE_LIMIT, param.DIP_LIMIT, Cauchy_MEDIANs, Cauchy_MADs, Cauchy_Trans, T,t,w_size,w, events,new_events, Omega_e,Omega_Anomalies_e,X_e_hat, W_idx);
 
                 X_e_hat_normal(:,(t-beta_count)*T:t*T) = W(:,(length(W_idx)-beta_count)*T:length(W_idx)*T);
-                
+
                 Omega_Anomalies_e(:,(t-beta_count)*T+1:t*T) = Omega_Cauchy;
-                Omega_Anomalies(:,(t-beta_count-w_size+w)*T+1:(t-w_size+w)*T) = Omega_Cauchy;                
+                Omega_Anomalies(:,(t-beta_count-w_size+w)*T+1:(t-w_size+w)*T) = Omega_Cauchy;
                 Omega_t_r = ones(M, beta_count*T);
                 Omega_t_r(Omega_Cauchy==1) = 0;
                 Omega_r_e(:,(t-beta_count)*T+1:t*T) = Omega_t_r;
@@ -312,8 +326,8 @@ for t = 1:num_batch
                 Omega_r(:,(t-beta_count-w_size+w)*T+1:(t-w_size+w)*T) = Omega_t_r;
                 Omega_L(:,(t-beta_count-w_size+w)*T+1:(t-w_size+w)*T) = Omega_t_r;
 
-                % s2 
-                cputime_inference_start = cputime;
+                % s2
+                cputime_reconstruction_start = cputime;
                 IDX_unrecover = find(r_iscomplete(:,incomplete_batch)==0)';
                 if ~isempty(IDX_unrecover)
                     IDX_root_unrecover = [];
@@ -325,7 +339,7 @@ for t = 1:num_batch
                     IDX_other_unrecover = setdiff(IDX_unrecover, IDX_root_unrecover);
 
                     for iru = IDX_root_unrecover
-                        % 
+                        %
                         Omega_iru = Omega_e(iru, (incomplete_batch-1)*T+1:incomplete_batch*T);
                         Omega_iru_idx = find(Omega_iru==1);
                         Omega_iru_anomalies = Omega_Anomalies_e(iru, (incomplete_batch-1)*T+1:incomplete_batch*T);
@@ -335,7 +349,7 @@ for t = 1:num_batch
                         X_e_hat_iru_omega = X_e_hat_iru(Omega_iru_idx);
                         X_e_hat_iru_omega_anomalies = X_e_hat_iru(Omega_iru_anomalies_idx);
 
-                        enhanced_columns = subfunc_enhance_U(U_W_union(:,end-beta_count+1:end,iru), U_W_union_idx(end-beta_count+1:end)); %enhanced subspace
+                        enhanced_columns = augment_temporal_history(U_W_union(:,end-beta_count+1:end,iru), U_W_union_idx(end-beta_count+1:end)); %enhanced subspace
                         U_W_union_iru = [U_W_union(:,1:end-beta_count,iru) enhanced_columns];
                         X_e_hat_iru = U_W_union_iru*pinv(U_W_union_iru(Omega_iru_idx,:))*X_e_hat_iru_omega;
 
@@ -369,7 +383,7 @@ for t = 1:num_batch
                         U_W_j_parent_omega = U_W_j_parent(Omega_iou_idx,:);
                         U_W_union_iou_omega = U_W_union_iou(Omega_iou_idx,:);
 
-                        [alpha_cau, alpha_his] = subfunc_inferEffect_ALS(X_e_hat_iou_omega, U_W_j_parent_omega, U_W_union_iou_omega, param.als_max_iter, param.als_tol);
+                        [alpha_cau, alpha_his] = fit_reconstruction_coefficients(X_e_hat_iou_omega, U_W_j_parent_omega, U_W_union_iou_omega, param.als_max_iter, param.als_tol);
                         X_e_hat_iou = U_W_j_parent*alpha_cau + U_W_union_iou*alpha_his;
                         X_e_hat_iou(Omega_iou_idx) = X_e_hat_iou_omega;
                         X_e_hat_normal(iou, (incomplete_batch-1)*T+1:incomplete_batch*T) = X_e_hat_iou';
@@ -379,25 +393,25 @@ for t = 1:num_batch
                         r_iscomplete(iou, incomplete_batch) = 1;
                     end
                 end
-                Overhead_cputime_inference(t) = cputime - cputime_inference_start;
-                % s4 
+                Overhead_cputime_reconstruction(t) = cputime - cputime_reconstruction_start;
+                % s4
                 if all(r_iscomplete(:, incomplete_batch))
                     disp(["OK", incomplete_batch]);
                 end
 
-                % 2.3 Updating phase for new batch : update (OAM_A,OAM_mu,OAM_beta) by new events
+                % Model Updater: incorporate newly sampled anomalies (Section 4.6).
                 cputime_modelupdate_start = cputime;
-                [OAM_mu,OAM_A,OAM_beta, S_mu,S_A,S_beta] = subfunc_robust_OAM_update_mbp(OAM_mu,OAM_A,OAM_beta, events, new_events, w,T, M, OAM_max_iter, OAM_epsilon, S_mu,S_A,S_beta, Par, W_idx);
+                [anomaly_mu,anomaly_A,anomaly_beta, S_mu,S_A,S_beta] = update_anomaly_model(anomaly_mu,anomaly_A,anomaly_beta, events, new_events, w,T, M, anomaly_max_iter, anomaly_tolerance, S_mu,S_A,S_beta, Par, W_idx);
                 Overhead_cputime_modelupdate(t) = cputime - cputime_modelupdate_start;
                 for i = 1:M
                     for j = (t-w_size+w-beta_count)*T+1:(t-w_size+w)*T
                         % lambda_i(j)
-                        lambda_i_j = OAM_mu(i);
+                        lambda_i_j = anomaly_mu(i);
                         for m_prime = Par{i}
                             past_events = events{m_prime}(events{m_prime}<=j);
                             if ~isempty(past_events)
                                 dt = j-past_events;
-                                contrib = OAM_A(i, m_prime) * OAM_beta(i, m_prime) * exp(-OAM_beta(i, m_prime)*dt);
+                                contrib = anomaly_A(i, m_prime) * anomaly_beta(i, m_prime) * exp(-anomaly_beta(i, m_prime)*dt);
                                 lambda_i_j = lambda_i_j + sum(contrib);
                             end
                         end
@@ -411,12 +425,12 @@ for t = 1:num_batch
             end
         else
             % *******************************************************************************************
-            % 
+            %
             for i = 1:numClusters
 
-                % step3. find root metrics
-                IDX_i = find(IDX_groups==i); 
-                Ord_i = Ord(i, 1:length(IDX_i)); 
+                % Identify root and child metrics in each local DAG.
+                IDX_i = find(IDX_groups==i);
+                Ord_i = Ord(i, 1:length(IDX_i));
                 B_i = B(Ord_i, Ord_i);
                 Stru_i = Stru(Ord_i, Ord_i);
                 num_root_i = length( find(IDX_root(i,:) ~= 0) );
@@ -425,27 +439,23 @@ for t = 1:num_batch
 
                 time_sample = tic;
                 cputime_sampling_start = cputime;
-                % step4. calculate frequency of root metrics
+                % Low-Rank Sampler: determine root and child base sample budgets.
                 for j = 1:size(B_i,1)
-                    j_ord_idx = Ord_i(j); 
+                    j_ord_idx = Ord_i(j);
 
                     if ismember(j_ord_idx, IDX_root_i)
-                        % root metric rank
+                        % Root metric: use its temporal-rank estimate.
                         r_j = ranks(j_ord_idx);
                         numSamples_j = max(param.theta_r*r_j*log(r_j), 1);
                     else
-                        % child metric rank
+                        % Child metric: use its local causal rank (parent count).
                         j_parent_idx = Ord_i(B_i(j,:) ~=0);
                         r_j = length(j_parent_idx);
                         numSamples_j = max(param.theta_c*r_j*log(r_j), 1);
                     end
-                    % 2.2 Low-rank Lambda frequency sampling:
-                    % sample metric by f_j and lambda_m(t)
-                    % update lambda_m(t) by parents' anomalies
-                    % detect anomalies， cauchy CDF
-                    % update lambda_m(t) by its new anomalies
-                    % Omega_t_j_ord_idx 
-                    [Omega_t_j_ord_idx, Omega_t_j_ord_idx_r,Omega_t_j_ord_idx_L, Anomalies_t_omega_j_ord_idx, Omega_Anomalies_e, events, new_events, Lambda,Lambda_normalize] = subfunc_robust_OAM_LoRLambda_w(j_ord_idx, numSamples_j, T, param, X_t(j_ord_idx, :), X_e_hat, Omega_e, Omega_Anomalies_e, events,new_events, Par, Cauchy_MEDIANs,Cauchy_MADs,Cauchy_Trans, W_idx, w_size,w, OAM_mu,OAM_A,OAM_beta, Lambda,Lambda_normalize);
+                    % Composite Sampler: combine base collection with anomaly-guided
+                    % candidates; detected anomalies update the shared event history.
+                    [Omega_t_j_ord_idx, Omega_t_j_ord_idx_r,Omega_t_j_ord_idx_L, Anomalies_t_omega_j_ord_idx, Omega_Anomalies_e, events, new_events, Lambda,Lambda_normalize] = composite_sampler(j_ord_idx, numSamples_j, T, param, X_t(j_ord_idx, :), X_e_hat, Omega_e, Omega_Anomalies_e, events,new_events, Par, Cauchy_MEDIANs,Cauchy_MADs,Cauchy_Trans, W_idx, w_size,w, anomaly_mu,anomaly_A,anomaly_beta, Lambda,Lambda_normalize);
 
                     Omega_t(j_ord_idx, :) = Omega_t_j_ord_idx;
                     Omega_t_r(j_ord_idx, :) = Omega_t_j_ord_idx_r;
@@ -456,8 +466,8 @@ for t = 1:num_batch
                 cputime_sampling_i = cputime - cputime_sampling_start;
                 Overhead_cputime_sampling(t) = Overhead_cputime_sampling(t) + cputime_sampling_i;
                 Time_sample_t = Time_sample_t + toc(time_sample);
-                % Recovery all root  IDX_root_i: U, X_t_omega
-                cputime_inference_start = cputime;
+                % Fine-Grained Reconstructor: recover roots from temporal history.
+                cputime_reconstruction_start = cputime;
                 for j = IDX_root_i
                     temp = length(find(U_W_idx(j,:)~=0));
                     idx_t_omega = find(Omega_t(j,:)~=0);
@@ -474,7 +484,7 @@ for t = 1:num_batch
                     r_estimators(j,t) = estimator_j;
 
                     if estimator_j < param.yita
-                        % Recovery root metrics by its inter-batch subspace
+                        % Reconstruct a root using its historical temporal representation.
                         X_e_hat_t_j = U_W_j*pinv(U_W_j(idx_t_omega,:))*X_t_omega_j;
                         X_e_hat_t(j,:) = X_e_hat_t_j';
                         X_e_hat_t(j, idx_t_omega) = X_t_omega_j';
@@ -489,10 +499,11 @@ for t = 1:num_batch
                         X_e_hat_t(j, idx_t_omega) = X_t_omega_j';
                         X_e_hat_t_normal(j, idx_t_omega) = X_t_omega_j';
                         X_e_hat_t(j, idx_t_omega_anomalies) = X_t(j, idx_t_omega_anomalies);
-                        disp(['Root Error!', num2str(j)])
+                        disp(['Root reconstruction unavailable for metric ', num2str(j)])
                     end
                 end
 
+                % Reconstruct children using causal and temporal representations.
                 for j = IDX_other_i
 
                     IDX_j_parent = find(B(j,:)~=0);
@@ -538,7 +549,7 @@ for t = 1:num_batch
                         r_iscomplete(j,t) = 1;
                     else
                         if iscomplete_j
-                            [alpha_cau, alpha_his] = subfunc_inferEffect_ALS(X_t_omega_j, U_W_j_parent_omega, U_W_j(idx_t_omega,:), param.als_max_iter, param.als_tol);
+                            [alpha_cau, alpha_his] = fit_reconstruction_coefficients(X_t_omega_j, U_W_j_parent_omega, U_W_j(idx_t_omega,:), param.als_max_iter, param.als_tol);
                             X_e_hat_j = U_W_j_parent*alpha_cau + U_W_j*alpha_his;
                             X_e_hat_t(j,:) = X_e_hat_j';
                             X_e_hat_t(j, idx_t_omega) = X_t_omega(j,idx_t_omega);
@@ -550,13 +561,13 @@ for t = 1:num_batch
                             X_e_hat_t(j, idx_t_omega) = X_t_omega_j';
                             X_e_hat_t_normal(j, idx_t_omega) = X_t_omega_j';
                             X_e_hat_t(j, idx_t_omega_anomalies) = X_t(j, idx_t_omega_anomalies);
-                            disp(['Effect Error!', num2str(j)])
+                            disp(['Child reconstruction unavailable for metric ', num2str(j)])
                         end
                     end
                     ranks(j) = ranks(j) - 1;
                 end
-                cputime_inference_i = cputime - cputime_inference_start;
-                Overhead_cputime_inference(t) = Overhead_cputime_inference(t) + cputime_inference_i;
+                cputime_reconstruction_i = cputime - cputime_reconstruction_start;
+                Overhead_cputime_reconstruction(t) = Overhead_cputime_reconstruction(t) + cputime_reconstruction_i;
 
                 r_iscomplete_root_i = find(r_iscomplete(IDX_root_i,t) == 0)';
                 if ~isempty(r_iscomplete_root_i)
@@ -571,9 +582,9 @@ for t = 1:num_batch
 
             end% for i=1:numClusters
 
-            % 2.3 Updating phase for new batch : update (OAM_A,OAM_mu,OAM_beta) by new events
+            % Model Updater: incorporate newly sampled anomalies (Section 4.6).
             cputime_modelupdate_start = cputime;
-            [OAM_mu,OAM_A,OAM_beta, S_mu,S_A,S_beta] = subfunc_robust_OAM_update_mbp(OAM_mu,OAM_A,OAM_beta, events, new_events, w,T, M, OAM_max_iter, OAM_epsilon, S_mu,S_A,S_beta, Par, W_idx);
+            [anomaly_mu,anomaly_A,anomaly_beta, S_mu,S_A,S_beta] = update_anomaly_model(anomaly_mu,anomaly_A,anomaly_beta, events, new_events, w,T, M, anomaly_max_iter, anomaly_tolerance, S_mu,S_A,S_beta, Par, W_idx);
             Overhead_cputime_modelupdate(t) = cputime - cputime_modelupdate_start;
 
             X_e_hat_normal(:, (t-1)*T+1 : t*T) = X_e_hat_t_normal;
@@ -594,8 +605,8 @@ for t = 1:num_batch
 
         r_incomplete_batchs(t) = incomplete_batch;
 
-        % monitoring anomalies from X_hat for alerting!
-        % update Cauchy
+        % Identify anomalies in the reconstructed batch for output analysis.
+        % Refresh the robust detector statistics.
         range_w = ((W_idx(1)-1)*T+1 : W_idx(w_size)*T);
         X_range_w = X_e_hat(:, range_w);
         Cauchy_MEDIANs_hat = median( X_range_w' );
@@ -611,7 +622,7 @@ for t = 1:num_batch
             Omega_Cauchy_dip_t(i, Cauchy_CDF_t(i,:)<param.DIP_LIMIT) = 1; % dip
         end
         Labels_Anomalies_X_hat(:, (t-w_size+w-1)*T+1:(t-w_size+w)*T) = double(Omega_Cauchy_spike_t | Omega_Cauchy_dip_t);
-    
+
     end
 end
 

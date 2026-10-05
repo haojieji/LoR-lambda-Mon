@@ -8,9 +8,9 @@ From the repository's `src` directory, run:
 
 ```matlab
 prepare_causample_data
-LoRlambda_Mon('oltp')
-LoRlambda_Mon('online_boutique')
-LoRlambda_Mon('sock_shop')
+CauSample('oltp')
+CauSample('online_boutique')
+CauSample('sock_shop')
 ```
 
 `prepare_causample_data` decompresses the OLTP CSV when necessary and imports
@@ -66,7 +66,7 @@ Its 15,400 columns include repeated observations introduced by embedding.
 | `Omega_Cauchy_large`, `Omega_Cauchy_small` | Spike and dip flags; their logical OR forms the labels |
 | `X_min`, `X_max`, `X_max_min` | Per-metric normalization metadata |
 | `columnIDX` | One-based indices of the retained metrics |
-| `columnNames` | Legacy metric names; the runner aligns them using `columnIDX` |
+| `columnNames` | Stored metric names; the runner aligns them using `columnIDX` |
 | `SPIKE_LIMIT`, `DIP_LIMIT` | Saved Cauchy thresholds: 0.92 and 0.08 |
 
 ## Label protocol
@@ -83,9 +83,9 @@ recall, and F1. The bundled BARO labels and current evaluator use thresholds
 ## Validation
 
 ```matlab
-validate_lorlambda_mon('oltp')
-validate_lorlambda_mon('online_boutique')
-validate_lorlambda_mon('sock_shop')
+validate_causample('oltp')
+validate_causample('online_boutique')
+validate_causample('sock_shop')
 ```
 
-These checks validate file availability and required matrix dimensions.
+These checks validate file availability and required matrix dimensions. The [public runner](../src/CauSample.m) selects each dataset; [preprocess_metric_data.m](../src/preprocess_metric_data.m) prepares raw OLTP data, and [evaluate_anomaly_preservation.m](../src/evaluate_anomaly_preservation.m) implements the anomaly evaluation described above.

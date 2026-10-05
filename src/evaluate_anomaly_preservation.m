@@ -1,5 +1,5 @@
-﻿function [perf_Precision, perf_Recall, perf_F1, perf_label_anomalies] = get_perf_OAM_precision_recall(X_hat, Labels_anomalies_X, M, w, T)
-%GET_PERF_OAM_PRECISION_RECALL Compute global anomaly precision, recall, and F1.
+function [perf_Precision, perf_Recall, perf_F1, perf_label_anomalies] = evaluate_anomaly_preservation(X_hat, Labels_anomalies_X, M, w, T)
+%EVALUATE_ANOMALY_PRESERVATION Compute global anomaly precision, recall, and F1.
 %
 % These metrics are the global/micro scores used by the experiment: TP, FP,
 % and FN are counted over all metrics and all evaluation time points before
@@ -12,7 +12,7 @@ Omega_Cauchy_small = zeros(size(X_hat));
 Cauchy_Trans = @(x, m) (x >= m) .* x + ...
     (x < m) .* ((2*m/pi) * tan((pi*(x - m))/(2*m)) + m);
 [~, Omega_Cauchy_large, Omega_Cauchy_small, ~, ~, ~, ~] = ...
-    subfunc_robust_AnomalyDetect_Cauchy_w(X_hat, SPIKE_LIMIT, DIP_LIMIT, ...
+    detect_window_anomalies(X_hat, SPIKE_LIMIT, DIP_LIMIT, ...
     Omega_Cauchy_large, Omega_Cauchy_small, Cauchy_Trans);
 perf_label_anomalies = double(Omega_Cauchy_large | Omega_Cauchy_small);
 

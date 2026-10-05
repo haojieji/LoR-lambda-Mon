@@ -13,9 +13,10 @@ The original CSV files are also retained in this directory.
 | Sock Shop | [BARO_SS_w7T50.mat](BARO_SS_w7T50.mat) | 721 × 59 stored raw matrix; 54 × 700 processed matrix |
 
 From the repository's `src` directory, run `prepare_causample_data` before
-the examples in the main README. It decompresses the OLTP input if necessary
+`results = CauSample('oltp');`. It decompresses the OLTP input if necessary
 and generates `mysql_510_608_withLabels.mat`. Both BARO MAT files are already
 tracked in the repository; no download or conversion is needed for them.
+Run those inputs with `CauSample('online_boutique')` or `CauSample('sock_shop')`.
 
 ## BARO source and preprocessing
 

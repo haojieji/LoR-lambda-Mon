@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for improving CauSample.  This project accompanies a research paper, so please keep changes reproducible and easy to audit.
+This project accompanies a research paper. Keep changes reproducible and make the relationship between the paper and implementation clear.
 
 ## Before opening a pull request
 
@@ -8,20 +8,24 @@ Thanks for improving CauSample.  This project accompanies a research paper, so p
    ```matlab
    cd src
    prepare_causample_data
-   validate_lorlambda_mon
+   validate_causample('oltp')
+   validate_causample('online_boutique')
+   validate_causample('sock_shop')
+   test_causample
    ```
-2. If you changed the algorithm, run the full experiment:
+2. If you changed the algorithm, run the affected datasets through the public runner and report the dataset and parameters used:
    ```matlab
-   cd src
-   LoRlambda_Mon
+   results = CauSample('oltp');
    ```
-3. Update `README.md` or `docs/` when behavior, inputs, outputs, or parameters change.
+3. Record which checks were actually run and any checks that could not be run. Validation and smoke checks do not establish full experimental results.
+4. Update [README.md](README.md), the [component mapping](docs/algorithm_overview.md), or the [source guide](src/README.md) when behavior, inputs, outputs, or parameters change.
 
 ## Code style
 
-- Keep experiment constants in `src/config.m`.
-- Prefer descriptive variable names for new code; preserve legacy variable names only where they are part of the paper implementation.
+- Keep shared parameters in [causample_config.m](src/causample_config.m) and dataset-specific settings in [CauSample.m](src/CauSample.m).
+- Use descriptive function names aligned with the paper's components. Explain mathematical symbols in function headers or nearby comments.
 - Add a short header comment to each new MATLAB function.
+- Preserve third-party attribution, copyright, and license notices when changing helper code.
 - Avoid committing generated `.mat`, `.fig`, `.log`, or result files.
 
 ## Documentation style

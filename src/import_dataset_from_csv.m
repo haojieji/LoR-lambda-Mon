@@ -1,5 +1,5 @@
 function outputPath = import_dataset_from_csv(csvPath, outputPath, datasetType)
-%IMPORT_DATASET_FROM_CSV Build MAT files consumed by LoRlambda-Mon.
+%IMPORT_DATASET_FROM_CSV Build MAT files consumed by CauSample.
 %
 % Usage
 %   cd src
@@ -10,10 +10,10 @@ function outputPath = import_dataset_from_csv(csvPath, outputPath, datasetType)
 %
 % The default OLTP mode reads [timestamp, metrics..., label1, label2] and
 % saves a raw MAT file.  BARO mode reads [timestamp, metrics...] and saves a
-% preprocessed MAT file that can be run directly with LoRlambda_Mon.
+% preprocessed MAT file that can be run directly with CauSample.
 
 srcDir = fileparts(mfilename('fullpath'));
-run(fullfile(srcDir, 'config.m'));
+run(fullfile(srcDir, 'causample_config.m'));
 
 if nargin < 3 || isempty(datasetType)
     datasetType = 'oltp';
@@ -74,7 +74,7 @@ switch datasetType
         dataset.window_size = 7;
         dataset.max_time_steps = 700;
 
-        run(fullfile(srcDir, 'data_preprocess.m'));
+        run(fullfile(srcDir, 'preprocess_metric_data.m'));
 
         outputDir = fileparts(outputPath);
         if ~isempty(outputDir) && exist(outputDir, 'dir') ~= 7
@@ -90,7 +90,7 @@ switch datasetType
         error('Unknown dataset type "%s". Use ''oltp'' or ''baro''.', datasetType);
 end
 
-fprintf('Saved LoRlambda-Mon dataset MAT file: %s\n', outputPath);
+fprintf('Saved CauSample dataset MAT file: %s\n', outputPath);
 end
 
 function timeVector = parseTimeVector(timeStamps)

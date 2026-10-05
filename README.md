@@ -11,14 +11,14 @@ Code, data, and supplementary proofs for **CauSample**, an adaptive metric sampl
 
 | Directory or file | Contents |
 | --- | --- |
-| [src/](src/) | MATLAB implementation and data preparation utilities |
+| [src/](src/README.md) | MATLAB implementation, suggested reading order, and helper attribution |
 | [dataset/](dataset/README.md) | TPC-C/OLTP trace, fault timeline, and selected Online Boutique and Sock Shop metric data |
 | [docs/algorithm_overview.md](docs/algorithm_overview.md) | Mapping from paper components to implementation files |
 | [docs/data_format.md](docs/data_format.md) | Data formats, preprocessing, and evaluation labels |
 | [appendix.pdf](appendix.pdf) | Supplementary proofs and derivations |
 | [SHA256SUMS](SHA256SUMS) | Checksums for the released data and appendix |
 
-This artifact provides the implementation, bundled inputs, and supplementary material for inspection. The OB/SS files contain selected preprocessed traces from BARO; the repository does not include the complete baseline and parameter-sweep scripts needed to regenerate every paper figure. Existing MATLAB entry-point names are retained for compatibility.
+This artifact provides the implementation, bundled inputs, and supplementary material for inspection. The OB/SS files contain selected preprocessed traces from BARO; the repository does not include the complete baseline and parameter-sweep scripts needed to regenerate every paper figure.
 
 ## Requirements
 
@@ -36,26 +36,26 @@ cd('path/to/artifact/src')
 prepare_causample_data
 
 % Run a dataset and return its evaluation results.
-results = LoRlambda_Mon('oltp');
-% results = LoRlambda_Mon('online_boutique');
-% results = LoRlambda_Mon('sock_shop');
+results = CauSample('oltp');
+% results = CauSample('online_boutique');
+% results = CauSample('sock_shop');
 ```
 
-`LoRlambda_Mon.m` is the experiment entry point, and `LoR_lambda_Mon.m` contains the core algorithm. The runner reports sampling ratio, normalized mean absolute error (NMAE), anomaly precision/recall/F1, and processing times. See the [component mapping](docs/algorithm_overview.md) to locate each sampler, reconstruction, and update routine.
+[CauSample.m](src/CauSample.m) is the public runner, and [causample_pipeline.m](src/causample_pipeline.m) coordinates the core algorithm. The runner reports sampling ratio, normalized mean absolute error (NMAE), anomaly precision/recall/F1, and processing times. To read the implementation alongside Sections 4.1–4.6 of the paper, start with the [component mapping](docs/algorithm_overview.md) and [source guide](src/README.md).
 
 The `.csv.gz` files in [dataset/](dataset/README.md) provide compact downloads for the anonymous mirror. `prepare_causample_data` decompresses the labeled CSV when needed and creates the OLTP MAT file without changing the bundled inputs.
 
 ## Configuration and data checks
 
-Common parameters and visualization settings are in [src/config.m](src/config.m). Dataset-specific batch/window sizes and overrides are in [src/LoRlambda_Mon.m](src/LoRlambda_Mon.m). Set `visualization.enable = false` for runs without plots.
+Common parameters and visualization settings are in [src/causample_config.m](src/causample_config.m). Dataset-specific batch/window sizes and overrides are in [src/CauSample.m](src/CauSample.m). Set `visualization.enable = false` for runs without plots.
 
 ```matlab
-validate_lorlambda_mon('oltp')
-validate_lorlambda_mon('online_boutique')
-validate_lorlambda_mon('sock_shop')
+validate_causample('oltp')
+validate_causample('online_boutique')
+validate_causample('sock_shop')
 ```
 
-These utilities check input availability and matrix dimensions. They are separate from running the sampling algorithm. The release packaging has been checked for file integrity and links; full MATLAB experiments were not rerun during packaging.
+These utilities check input availability and matrix dimensions. [test_causample.m](src/test_causample.m) provides a lightweight smoke check. Neither replaces an experiment through `CauSample`. Full MATLAB experiments were not rerun during this documentation and naming update.
 
 ## Data sources
 
@@ -63,4 +63,4 @@ The OLTP data were collected using the TPC Benchmark C (TPC-C) workload. Online 
 
 ## License and attribution
 
-See [LICENSE](LICENSE) for the project license. Existing third-party notices in the source files are retained; their attribution and applicable terms remain in effect.
+See [LICENSE](LICENSE) for the project license, including the original project copyright attribution. Third-party notices and applicable terms remain in their source files; the [source guide](src/README.md#helpers-and-attribution) groups the included helpers and their recorded attributions.

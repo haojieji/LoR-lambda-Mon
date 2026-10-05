@@ -1,5 +1,5 @@
-% data_preprocess.m
-% Convert the loaded dataset into the matrices expected by LoRlambda-Mon.
+% preprocess_metric_data.m
+% Convert the loaded dataset into the matrices expected by CauSample.
 %
 % Required input variables (usually loaded from the OLTP MAT dataset):
 %   dataMatrix  - time-by-metric numeric matrix
@@ -14,7 +14,7 @@
 %   X_min/X_max/...     Metadata used to restore the original scale
 
 if ~exist('dataMatrix', 'var') || ~exist('columnNames', 'var')
-    error('data_preprocess requires dataMatrix and columnNames in the workspace.');
+    error('preprocess_metric_data requires dataMatrix and columnNames in the workspace.');
 end
 
 if exist('dataset', 'var')
@@ -78,19 +78,19 @@ end
 
 columnNames = metricNames(columnIDX);
 
-% Reproduce the paper experiment window while avoiding out-of-bounds access
+% Select the configured trace length while avoiding out-of-bounds access
 % if a user provides a shorter custom dataset.
 max_time_steps = min(max_time_steps, size(X, 1));
 X = X(1:max_time_steps, :)';
 
 % Label anomalies before normalization with the same robust Cauchy detector
-% used by the online monitor.
+% used by the Anomaly Detector.
 Omega_Cauchy_large = zeros(size(X));
 Omega_Cauchy_small = zeros(size(X));
 Cauchy_Trans = @(x, m) (x >= m) .* x + ...
                        (x < m) .* ((2*m/pi) .* tan((pi*(x - m)) ./ (2*m + eps)) + m);
 [~, Omega_Cauchy_large, Omega_Cauchy_small] = ...
-    subfunc_robust_AnomalyDetect_Cauchy_w(X, SPIKE_LIMIT, DIP_LIMIT, ...
+    detect_window_anomalies(X, SPIKE_LIMIT, DIP_LIMIT, ...
     Omega_Cauchy_large, Omega_Cauchy_small, Cauchy_Trans);
 Labels_anomalies_X = double(Omega_Cauchy_large | Omega_Cauchy_small);
 

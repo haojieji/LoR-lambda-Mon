@@ -1,6 +1,6 @@
 function prepare_causample_data()
 %PREPARE_CAUSAMPLE_DATA Prepare the bundled inputs for CauSample.
-% Run once before LoRlambda_Mon. Existing MAT files are left unchanged.
+% Run once before CauSample. Existing MAT files are left unchanged.
 
 srcDir = fileparts(mfilename('fullpath'));
 datasetDir = fullfile(srcDir, '..', 'dataset');
@@ -24,5 +24,5 @@ for i = 1:numel(baroFiles)
         error('Missing bundled input: dataset/%s', baroFiles{i});
     end
 end
-fprintf('CauSample inputs are ready. Run LoRlambda_Mon with a dataset name.\n');
+fprintf('CauSample inputs are ready. Run CauSample with a dataset name.\n');
 end
