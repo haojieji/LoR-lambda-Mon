@@ -4,58 +4,62 @@ function [W, Omega_Cauchy_large, Omega_Cauchy_small, Cauchy_MEDIANs, Cauchy_MADs
     Cauchy_Trans)
 % ANOMALY_DETECTOR_WINDOW Identify spikes and dips in a metric window.
 %   Anomaly Detector (Section 4.1); also used for evaluation labels.
-%   W is a metric-by-time matrix. Return its interpolated normal-data copy,
-%   spike/dip indicators, robust statistics, and per-metric thresholds.
+%   W is M-by-N data; SPIKE_LIMIT/DIP_LIMIT are scalar CDF cutoffs, and
+%   Cauchy_Trans(values,median) is a shape-preserving transform. Input/output
+%   spike/dip masks are M-by-at-least-N state arrays: detections are set to 1.
+%   Return interpolated W, both masks, 1-by-M pre-interpolation medians/MADs,
+%   and 1-by-M spike/dip thresholds, in that order. Existing mask flags persist.
+%   Mask columns beyond N must be zero. When all entries are flagged, interpolation uses the less frequent type
+%   (dip on a tie); the two returned spike/dip masks retain their flags.
 
 M = size(W,1);
 
-% 1.
+% 1. Compute robust statistics and transform each metric.
 Cauchy_MEDIANs = median( W' );
 Cauchy_MADs = median(abs(W' - Cauchy_MEDIANs));
 Cauchy_Trans_W = zeros(size(W));
 Cauchy_CDF = zeros(size(W));
 Cauchy_thresh_SPIKE = zeros(1,M);
 Cauchy_thresh_DIP = zeros(1,M);
-for j = 1:M
-    Cauchy_Trans_W(j,:) = Cauchy_Trans( W(j,:), Cauchy_MEDIANs(j) );
-%     if Cauchy_MADs(j)>0
-        Cauchy_CDF(j,:) = (1/pi) * atan( (Cauchy_Trans_W(j,:)-Cauchy_MEDIANs(j))/(Cauchy_MADs(j)+eps) ) + 0.5;
+for metric_idx = 1:M
+    Cauchy_Trans_W(metric_idx,:) = Cauchy_Trans( W(metric_idx,:), Cauchy_MEDIANs(metric_idx) );
+    Cauchy_CDF(metric_idx,:) = (1/pi) * atan( (Cauchy_Trans_W(metric_idx,:)-Cauchy_MEDIANs(metric_idx))/(Cauchy_MADs(metric_idx)+eps) ) + 0.5;
 
-        % 2.
-        Omega_Cauchy_large(j, Cauchy_CDF(j,:)>SPIKE_LIMIT) = 1; % spike
-        Omega_Cauchy_small(j, Cauchy_CDF(j,:)<DIP_LIMIT) = 1; % dip
-%     end
-    Cauchy_thresh_SPIKE(j) = tan(pi*(SPIKE_LIMIT-0.5)) * Cauchy_MADs(j) + Cauchy_MEDIANs(j);
-    if Cauchy_thresh_SPIKE(j) < Cauchy_MEDIANs(j)
-        Cauchy_thresh_SPIKE(j) = atan( (Cauchy_thresh_SPIKE(j) - Cauchy_MEDIANs(j)) * (pi/(2*Cauchy_MEDIANs(j))) ) *(2*Cauchy_MEDIANs(j)/pi) +Cauchy_MEDIANs(j);
+    % 2. Mark tail events without clearing existing flags.
+    Omega_Cauchy_large(metric_idx, Cauchy_CDF(metric_idx,:)>SPIKE_LIMIT) = 1; % spike
+    Omega_Cauchy_small(metric_idx, Cauchy_CDF(metric_idx,:)<DIP_LIMIT) = 1; % dip
+    % Convert the CDF cutoffs back to metric thresholds.
+    Cauchy_thresh_SPIKE(metric_idx) = tan(pi*(SPIKE_LIMIT-0.5)) * Cauchy_MADs(metric_idx) + Cauchy_MEDIANs(metric_idx);
+    if Cauchy_thresh_SPIKE(metric_idx) < Cauchy_MEDIANs(metric_idx)
+        Cauchy_thresh_SPIKE(metric_idx) = atan( (Cauchy_thresh_SPIKE(metric_idx) - Cauchy_MEDIANs(metric_idx)) * (pi/(2*Cauchy_MEDIANs(metric_idx))) ) *(2*Cauchy_MEDIANs(metric_idx)/pi) +Cauchy_MEDIANs(metric_idx);
     end
-    Cauchy_thresh_DIP(j) = tan(pi*(DIP_LIMIT-0.5)) * Cauchy_MADs(j) + Cauchy_MEDIANs(j);
-    if Cauchy_thresh_DIP(j) < Cauchy_MEDIANs(j)
-        Cauchy_thresh_DIP(j) = atan( (Cauchy_thresh_DIP(j) - Cauchy_MEDIANs(j)) * (pi/(2*Cauchy_MEDIANs(j))) ) *(2*Cauchy_MEDIANs(j)/pi) + Cauchy_MEDIANs(j);
+    Cauchy_thresh_DIP(metric_idx) = tan(pi*(DIP_LIMIT-0.5)) * Cauchy_MADs(metric_idx) + Cauchy_MEDIANs(metric_idx);
+    if Cauchy_thresh_DIP(metric_idx) < Cauchy_MEDIANs(metric_idx)
+        Cauchy_thresh_DIP(metric_idx) = atan( (Cauchy_thresh_DIP(metric_idx) - Cauchy_MEDIANs(metric_idx)) * (pi/(2*Cauchy_MEDIANs(metric_idx))) ) *(2*Cauchy_MEDIANs(metric_idx)/pi) + Cauchy_MEDIANs(metric_idx);
     end
 end
 
-% 3.
+% 3. Keep one anomaly type if their union covers the entire row.
 Omega_Cauchy = double(Omega_Cauchy_large | Omega_Cauchy_small);
-for j=1:M
-    if sum(Omega_Cauchy(j,:)) == size(W,2)
-        if sum(Omega_Cauchy_large(j,:)) < sum(Omega_Cauchy_small(j,:))
-            Omega_Cauchy(j,:) = Omega_Cauchy_large(j,:);
+for metric_idx=1:M
+    if sum(Omega_Cauchy(metric_idx,:)) == size(W,2)
+        if sum(Omega_Cauchy_large(metric_idx,:)) < sum(Omega_Cauchy_small(metric_idx,:))
+            Omega_Cauchy(metric_idx,:) = Omega_Cauchy_large(metric_idx,:);
         else
-            Omega_Cauchy(j,:) = Omega_Cauchy_small(j,:);
+            Omega_Cauchy(metric_idx,:) = Omega_Cauchy_small(metric_idx,:);
         end
     end
 end
 W(Omega_Cauchy==1) = 0;
 
-% 4. GroundTruth = W(Omega_Cauchy==0) + Anomalies(Omega_Cauchy==1);
-for j=1:M
-    idx_anomalies = find( Omega_Cauchy(j, 1:size(W,2))==1 );
+% 4. Interpolate normal values at anomalous times (linear extrapolation at ends).
+for metric_idx=1:M
+    anomaly_indices = find( Omega_Cauchy(metric_idx, 1:size(W,2))==1 );
 
-    if ~isempty(idx_anomalies)
-        idx_nomalies = find( Omega_Cauchy(j, 1:size(W,2))==0 );
-        val = interp1(idx_nomalies, W(j,idx_nomalies), idx_anomalies,'linear','extrap');
-        W(j, idx_anomalies) = val;
+    if ~isempty(anomaly_indices)
+        normal_indices = find( Omega_Cauchy(metric_idx, 1:size(W,2))==0 );
+        interpolated_values = interp1(normal_indices, W(metric_idx,normal_indices), anomaly_indices,'linear','extrap');
+        W(metric_idx, anomaly_indices) = interpolated_values;
     end
 end
 

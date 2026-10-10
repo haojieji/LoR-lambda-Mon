@@ -1,5 +1,6 @@
 function ok = validate_causample(datasetName)
-%VALIDATE_CAUSAMPLE Lightweight project health check.
+%VALIDATE_CAUSAMPLE Check source availability and prepared input dimensions.
+%   This input preflight does not run sampling, reconstruction, or evaluation.
 %
 % Usage
 %   validate_causample
@@ -33,6 +34,8 @@ try
         'Runner function CauSample.m is missing.');
     assert(exist(fullfile(srcDir, 'preprocess_metric_data.m'), 'file') == 2, ...
         'preprocess_metric_data.m is missing.');
+    assert(exist(fullfile(srcDir, 'load_causample_dataset.m'), 'file') == 2, ...
+        'load_causample_dataset.m is missing.');
     fprintf('OK  Source files found\n');
 
     fprintf('Dataset: %s\n', dataset.name);
@@ -46,42 +49,15 @@ try
         error('Dataset MAT file does not exist: %s', dataset.path);
     end
 
-    switch dataset.type
-        case 'raw'
-            load(dataset.path, 'dataMatrix', 'columnNames');
-            assert(exist('dataMatrix', 'var') == 1, 'MAT file lacks dataMatrix.');
-            assert(exist('columnNames', 'var') == 1, 'MAT file lacks columnNames.');
-            fprintf('OK  Raw dataset MAT file loaded\n');
-
-            run(fullfile(srcDir, 'preprocess_metric_data.m'));
-
-        case 'preprocessed'
-            requiredVars = {'X', 'X_e', 'Labels_anomalies_X', 'X_min', ...
-                            'X_max', 'X_max_min', 'columnIDX', 'columnNames'};
-            data = load(dataset.path, requiredVars{:});
-            for iVar = 1:numel(requiredVars)
-                assert(isfield(data, requiredVars{iVar}), ...
-                    'MAT file lacks %s.', requiredVars{iVar});
-            end
-
-            X = double(data.X);
-            X_e = double(data.X_e);
-            Labels_anomalies_X = double(data.Labels_anomalies_X);
-            X_min = double(data.X_min);
-            X_max = double(data.X_max);
-            X_max_min = double(data.X_max_min);
-            columnIDX = double(data.columnIDX);
-            columnNames = string(data.columnNames);
-
-            if numel(columnNames) ~= size(X, 1)
-                assert(numel(columnIDX) == size(X, 1) && max(columnIDX) <= numel(columnNames), ...
-                    'columnNames cannot be aligned with X using columnIDX.');
-                columnNames = columnNames(columnIDX);
-                columnIDX = 1:size(X, 1); %#ok<NASGU>
-            end
-
-            fprintf('OK  Preprocessed dataset MAT file loaded\n');
-    end
+    data = load_causample_dataset(dataset, params);
+    X = data.X;
+    X_e = data.X_e;
+    Labels_anomalies_X = data.Labels_anomalies_X;
+    X_min = data.X_min;
+    X_max = data.X_max;
+    X_max_min = data.X_max_min;
+    columnNames = data.columnNames;
+    fprintf('OK  Dataset MAT file loaded and metric names aligned\n');
 
     T = dataset.batch_size;
     w = dataset.window_size;

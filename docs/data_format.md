@@ -85,6 +85,12 @@ FP, and FN across metrics and post-training time points to compute precision,
 recall, and F1. The bundled BARO labels and current evaluator use thresholds
 0.08/0.92.
 
+The configurable `params.SPIKE_LIMIT` and `params.DIP_LIMIT` control online
+detection and labels generated when preprocessing raw TPC-C data. They do not
+replace the labels saved in the bundled BARO files or the evaluator's fixed
+thresholds. The defaults agree; changing the algorithm thresholds should not
+be interpreted as changing the entire evaluation protocol.
+
 ## Validation
 
 ```matlab
@@ -93,4 +99,18 @@ validate_causample('online_boutique')
 validate_causample('sock_shop')
 ```
 
-These checks validate file availability and required matrix dimensions. The [public runner](../src/CauSample.m) and validator share dataset keys, paths, and settings through [causample_dataset_config.m](../src/causample_dataset_config.m); [preprocess_metric_data.m](../src/preprocess_metric_data.m) prepares raw TPC-C data, and [evaluate_anomaly_preservation.m](../src/evaluate_anomaly_preservation.m) implements the anomaly evaluation described above.
+These checks validate file availability and required matrix dimensions. The [public runner](../src/CauSample.m) and validator share dataset keys, paths, and settings through [causample_dataset_config.m](../src/causample_dataset_config.m), and load inputs through [load_causample_dataset.m](../src/load_causample_dataset.m).
+
+Raw preprocessing has an explicit interface:
+
+```matlab
+data = preprocess_metric_data(dataMatrix, columnNames, dataset, params);
+```
+
+The returned structure contains `X`, `X_e`, `Labels_anomalies_X`, `columnIDX`,
+`columnNames`, `X_min`, `X_max`, `X_max_min`, `Omega_Cauchy_large`, and
+`Omega_Cauchy_small`. It does not read or write variables in the caller's
+workspace. Original-scale metadata is retained for evaluation by the runner.
+Only full online batches enter `X_e`; custom traces with an incomplete final
+batch retain those extra samples in `X`, as in the original preprocessing.
+The bundled inputs use complete batches.

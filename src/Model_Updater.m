@@ -1,99 +1,129 @@
-function [mu_updated, A_updated, beta_updated, S_mu, S_a, S_beta] = ...
+function [mu_updated, A_updated, beta_updated, S_mu, S_A, S_beta] = ...
     Model_Updater(mu, A, beta, events, new_events, w, T, M, max_iter, epsilon, S_mu_init, ...
-    S_a_init, S_beta_init, Par, W_idx)
+    S_A_init, S_beta_init, Par, W_idx)
 % MODEL_UPDATER Incorporate newly sampled anomaly events.
 %   Model Updater (Section 4.6).
-%   Reuse S_mu_init, S_a_init, and S_beta_init, accumulate contributions from
-%   new_events, and update background, excitation, and decay parameters.
-%   events stores the available event history and Par the permitted parents
-%   including self-excitation. Return updated parameters and statistics.
+%
+%   [mu_updated, A_updated, beta_updated, S_mu, S_A, S_beta] = ...
+%       Model_Updater(mu, A, beta, events, new_events, w, T, M, max_iter, ...
+%       epsilon, S_mu_init, S_A_init, S_beta_init, Par, W_idx)
+%
+%   mu/S_mu_init are M-by-1 background rates/responsibility totals; A/beta and
+%   S_A_init/S_beta_init are M-by-M excitation strengths, decay rates, parent
+%   responsibility totals, and lag-weighted totals (target metric by parent).
+%   Empty initial statistics are allocated with these shapes. Returned
+%   parameters/statistics have the same shapes; the fifth output S_A preserves
+%   the excitation statistic formerly named S_a in this function.
+%   events/new_events and Par are M-by-1 cells of original event times and
+%   allowed parent/self metric indices. Only new_events contribute additional
+%   responsibilities; events provides their earlier parent/self history.
+%   Inputs are read-only; accumulated statistics and parameters are returned.
+%
+%   T is segment length; w is the original window's batch count. W_idx stores
+%   enhanced batch indices. The event-count cutoff retains the existing
+%   (W_idx(1)-1)*T expression even though events use original coordinates.
+%   max_iter/epsilon set the iteration cap/absolute convergence tolerance.
 
 total_T = w*T;
 
 if size(S_mu_init)==0
     S_mu_init = zeros(M, 1);
 end
-if size(S_a_init)==0
-    S_a_init = zeros(M, M);
+if size(S_A_init)==0
+    S_A_init = zeros(M, M);
 end
 if size(S_beta_init)==0
     S_beta_init = zeros(M, M);
 end
-gamma = 0; %
+% gamma disables the diagonal excitation regularizer for online updates.
+gamma = 0;
+% alpha boosts self-excitation in the intensity; dividing self-event
+% responsibilities by alpha scales back their numerators before accumulation.
 alpha = 1.5;
 
-%n = cellfun(@length, events);
-range_W = (W_idx(1)-1)*T;
-n = cellfun(@(x) sum(x>range_W), events);
+window_start_time = (W_idx(1)-1)*T;
+n = cellfun(@(x) sum(x>window_start_time), events);
 
 for iter = 1:max_iter
-    % E-step: add new-event responsibilities to the stored statistics.
+    % E-step: restart from the supplied statistics on each iteration, then
+    % add responsibilities for the new events using the current parameters.
     S_mu = S_mu_init;
-    S_a = S_a_init;
+    S_A = S_A_init;
     S_beta = S_beta_init;
 
-    for m = 1:M
-        for i = 1:length(new_events{m})
-            ti = new_events{m}(i);
-            lambda = mu(m);
-            contrib_par_and_itself = cell(M,1);
+    for metric_idx = 1:M
+        for event_idx = 1:length(new_events{metric_idx})
+            original_event_time = new_events{metric_idx}(event_idx);
+            lambda = mu(metric_idx);
+            parent_event_contributions = cell(M,1);
 
-            % Contribution from all parents
-            for m_prime = Par{m}
-                past_events = events{m_prime}(events{m_prime} < ti);
+            % Intensity: sum allowed parent/self contributions from strictly
+            % earlier events, retaining each contribution for responsibilities.
+            for parent_metric_idx = Par{metric_idx}
+                past_events = events{parent_metric_idx}(events{parent_metric_idx} < ...
+                    original_event_time);
                 if ~isempty(past_events)
-                    dt = ti - past_events;
-                    contrib = A(m, m_prime) * beta(m, m_prime) * exp(-beta(m, m_prime) * dt);
-                    if m_prime == m
+                    dt = original_event_time - past_events;
+                    contrib = A(metric_idx, parent_metric_idx) * ...
+                        beta(metric_idx, parent_metric_idx) * ...
+                        exp(-beta(metric_idx, parent_metric_idx) * dt);
+                    if parent_metric_idx == metric_idx
                         contrib = alpha * contrib;
                     end
-                    contrib_par_and_itself{m_prime} = contrib;
+                    parent_event_contributions{parent_metric_idx} = contrib;
                     lambda = lambda + sum(contrib);
                 end
             end
 
-            % Compute p_ii and p_ij
-            p_ii = mu(m) / max(lambda,eps);
-            S_mu(m) = S_mu(m) + p_ii;
+            % Responsibilities: p_ii assigns this event to the background;
+            % p_ij_vector assigns it to individual earlier parent/self events.
+            p_ii = mu(metric_idx) / max(lambda,eps);
+            S_mu(metric_idx) = S_mu(metric_idx) + p_ii;
 
-            for m_prime = Par{m}
-                past_events = events{m_prime}(events{m_prime} < ti);
+            for parent_metric_idx = Par{metric_idx}
+                past_events = events{parent_metric_idx}(events{parent_metric_idx} < ...
+                    original_event_time);
                 if ~isempty(past_events)
-                    dt = ti - past_events;
+                    dt = original_event_time - past_events;
                     if lambda > eps
-                        p_ij = contrib_par_and_itself{m_prime} / lambda;
+                        p_ij_vector = parent_event_contributions{parent_metric_idx} / lambda;
                     else
-                        p_ij = zeros(size(contrib_par_and_itself{m_prime}));
+                        p_ij_vector = zeros(size(parent_event_contributions{parent_metric_idx}));
                     end
-                    if m_prime == m
-                        p_ij = p_ij / alpha;
+                    if parent_metric_idx == metric_idx
+                        p_ij_vector = p_ij_vector / alpha;
                     end
-                    S_a(m, m_prime) = S_a(m, m_prime) + sum(p_ij);
-                    S_beta(m, m_prime) = S_beta(m, m_prime) + sum(p_ij .* dt);
+                    S_A(metric_idx, parent_metric_idx) = S_A(metric_idx, parent_metric_idx) + ...
+                        sum(p_ij_vector);
+                    S_beta(metric_idx, parent_metric_idx) = ...
+                        S_beta(metric_idx, parent_metric_idx) + sum(p_ij_vector .* dt);
                 end
             end
         end
     end
 
-    % M-step: update the anomaly-model parameters.
+    % M-step: update parameter rows with new events; preserve other rows.
     mu_updated = S_mu / total_T;
     A_updated = A;
     beta_updated = beta;
 
-    for m = 1:M
-        if isempty(new_events{m})
-            mu_updated(m) = mu(m);
-            A_updated(m,:) = A(m,:);
-            beta_updated(m,:) = beta(m,:);
+    for metric_idx = 1:M
+        if isempty(new_events{metric_idx})
+            mu_updated(metric_idx) = mu(metric_idx);
+            A_updated(metric_idx,:) = A(metric_idx,:);
+            beta_updated(metric_idx,:) = beta(metric_idx,:);
         else
-            for m_prime = Par{m}
-                if m_prime == m %A_new
-                    reg_term = gamma / max(A_updated(m, m), eps);
-                    A_updated(m, m_prime) = (S_a(m, m_prime)+reg_term) / max(n(m_prime),1);
+            for parent_metric_idx = Par{metric_idx}
+                if parent_metric_idx == metric_idx
+                    reg_term = gamma / max(A_updated(metric_idx, metric_idx), eps);
+                    A_updated(metric_idx, parent_metric_idx) = ...
+                        (S_A(metric_idx, parent_metric_idx)+reg_term) / max(n(parent_metric_idx),1);
                 else
-                    A_updated(m, m_prime) = S_a(m, m_prime) / max(n(m_prime),1);
+                    A_updated(metric_idx, parent_metric_idx) = ...
+                        S_A(metric_idx, parent_metric_idx) / max(n(parent_metric_idx),1);
                 end
-                beta_updated(m, m_prime) = S_a(m, m_prime) / (S_beta(m, m_prime)+eps);
+                beta_updated(metric_idx, parent_metric_idx) = ...
+                    S_A(metric_idx, parent_metric_idx) / (S_beta(metric_idx, parent_metric_idx)+eps);
             end
         end
     end

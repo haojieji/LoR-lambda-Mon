@@ -1,5 +1,5 @@
 function test_causample(datasetName)
-%TEST_CAUSAMPLE Check source availability and validate one dataset.
+%TEST_CAUSAMPLE Run input preflight checks for one dataset.
 %
 % Usage
 %   test_causample
@@ -7,14 +7,15 @@ function test_causample(datasetName)
 %   test_causample('online_boutique')
 %   test_causample('sock_shop')
 %
-% This lightweight check delegates data loading and preprocessing to
-% validate_causample. Run CauSample for the full sampling experiment.
+% This input preflight delegates loading and preprocessing to
+% validate_causample. It does not execute the sampling/reconstruction
+% algorithm or verify its results. Run CauSample for the full experiment.
 
 if nargin < 1 || isempty(datasetName)
     datasetName = 'tpc_c';
 end
 
-fprintf('=== CauSample smoke tests ===\n');
+fprintf('=== CauSample input preflight ===\n');
 srcDir = fileparts(mfilename('fullpath'));
 addpath(srcDir);
 
@@ -22,7 +23,7 @@ fprintf('\n1. Checking configuration and required files...\n');
 requiredFiles = {'causample_config.m', 'causample_dataset_config.m', ...
     'causample_pipeline.m', ...
     'CauSample.m', 'import_dataset_from_csv.m', 'prepare_causample_data.m', ...
-    'preprocess_metric_data.m', 'validate_causample.m', ...
+    'preprocess_metric_data.m', 'load_causample_dataset.m', 'validate_causample.m', ...
     'Sparse_Causal_Structure_Extractor.m', 'Low_Rank_Sampler.m', ...
     'Anomaly_Sampler.m', 'Anomaly_Sampler_Training.m', ...
     'Composite_Sampler.m', 'Fine_Grained_Reconstructor.m', 'Model_Updater.m', ...
@@ -38,5 +39,5 @@ fprintf('\n2. Validating dataset inputs...\n');
 assert(validate_causample(datasetName), ...
     'CauSample validation failed. Check the validation output and prepare the dataset before retrying.');
 
-fprintf('\n=== Smoke tests passed ===\n');
+fprintf('\n=== Input preflight passed ===\n');
 end

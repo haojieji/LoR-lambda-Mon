@@ -1,27 +1,43 @@
-function data = preprocess_metric_data(dataMatrix, columnNames, dataset, params)
-%PREPROCESS_METRIC_DATA Filter, label, normalize, and self-embed raw metrics.
-%   data = preprocess_metric_data(dataMatrix, columnNames, dataset, params)
-%   takes a time-by-metric numeric matrix and metric names (or a CSV header).
-%   dataset supplies batch_size T, window_size w, and max_time_steps;
-%   params supplies the Cauchy detector's SPIKE_LIMIT and DIP_LIMIT.
-%
-%   Returned fields, where M is the number of retained metrics and N is the
-%   selected original trace length:
-%     X                     M-by-N normalized metrics
-%     X_e                   M-by-enhanced-time self-embedded metrics
-%     Labels_anomalies_X     M-by-N combined spike/dip labels
-%     Omega_Cauchy_large     M-by-N spike indicators, before normalization
-%     Omega_Cauchy_small     M-by-N dip indicators, before normalization
-%     X_min/X_max/X_max_min  1-by-M normalization metadata
-%     columnIDX              1-by-M original metric indices after filtering
-%     columnNames            M names in the input name vector's orientation
-%   The input arrays and configuration structs are not modified in the caller.
+% Frozen regression reference from CauSample commit
+% 36b0ca1bde23c5afe563678945cde559de4ef5e1, src/preprocess_metric_data.m.
+% Keep this script unchanged: production callers use the explicit function.
 
-T = dataset.batch_size;
-w = dataset.window_size;
-max_time_steps = dataset.max_time_steps;
-SPIKE_LIMIT = params.SPIKE_LIMIT;
-DIP_LIMIT = params.DIP_LIMIT;
+% preprocess_metric_data.m
+% Convert the loaded dataset into the matrices expected by CauSample.
+%
+% Required input variables (usually loaded from the TPC-C MAT dataset):
+%   dataMatrix  - time-by-metric numeric matrix
+%   columnNames - metric names, or the original CSV header including timestamp
+%
+% Output variables:
+%   X                   M-by-N normalized metric matrix
+%   X_e                 Enhanced matrix used by the sliding-window model
+%   Labels_anomalies_X  Cauchy-based anomaly labels on the original timeline
+%   columnIDX           Original metric indices kept after filtering
+%   columnNames         Names corresponding to the filtered metric universe
+%   X_min/X_max/...     Metadata used to restore the original scale
+
+if ~exist('dataMatrix', 'var') || ~exist('columnNames', 'var')
+    error('preprocess_metric_data requires dataMatrix and columnNames in the workspace.');
+end
+
+if exist('dataset', 'var')
+    T = dataset.batch_size;
+    w = dataset.window_size;
+    max_time_steps = dataset.max_time_steps;
+else
+    T = 100;
+    w = 23;
+    max_time_steps = 11600;
+end
+
+if exist('params', 'var')
+    SPIKE_LIMIT = params.SPIKE_LIMIT;
+    DIP_LIMIT = params.DIP_LIMIT;
+else
+    SPIKE_LIMIT = 0.92;
+    DIP_LIMIT = 0.08;
+end
 
 columnNames = string(columnNames);
 numDataColumns = size(dataMatrix, 2);
@@ -100,8 +116,10 @@ end
 
 % Build the enhanced input matrix.  The first T*w samples are transformed
 % with a sliding self-embedding window; later data is appended batch by batch.
-% An incomplete final batch remains in X but is not appended to X_e.
 w_size = T * w - T + 1;
+if exist('dataset', 'var')
+    dataset.enhanced_window_size = w_size;
+end
 
 index = 1;
 X_e = [];
@@ -114,12 +132,4 @@ lastStart = size(X, 2) - T + 1;
 for i = T*w + 1:T:lastStart
     X_e(:, (index-1)*T+1:index*T) = X(:, i:i+T-1); %#ok<SAGROW>
     index = index + 1;
-end
-
-data = struct('X', X, 'X_e', X_e, ...
-    'Labels_anomalies_X', Labels_anomalies_X, ...
-    'X_min', X_min, 'X_max', X_max, 'X_max_min', X_max_min, ...
-    'columnIDX', columnIDX, 'columnNames', columnNames, ...
-    'Omega_Cauchy_large', Omega_Cauchy_large, ...
-    'Omega_Cauchy_small', Omega_Cauchy_small);
 end

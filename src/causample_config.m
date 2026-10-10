@@ -6,7 +6,8 @@
 %   CauSample('online_boutique')
 %   CauSample('sock_shop')
 %
-% This file only stores algorithm, visualization, and logging parameters.
+% This file stores implemented algorithm and visualization settings.
+% Dataset-specific overrides are applied afterwards by causample_dataset_config.
 
 % Algorithm parameters
 params = struct();
@@ -16,14 +17,15 @@ params.theta_r = 5e-6;      % Base sample-budget scale for root metrics
 params.theta_c = 1e-1;      % Base sample-budget scale for child metrics
 params.yita = 1e-6;         % Normalized projection residual tolerance
 
-% Model parameters
-params.beta = 2;             % Full batches collected after a subspace mismatch
+% Reconstruction and recovery parameters
+params.beta = 2;             % Recovery batch count, not the Hawkes decay parameter
 params.als_max_iter = 1000;  % Maximum iterations for ALS
 params.als_tol = 0.001;      % Tolerance for ALS convergence
-params.epsilon_delta = 2.7;  % Legacy spike threshold kept for reproducibility
-params.epsilon_gamma = 0.2;  % Legacy dip threshold kept for reproducibility
 
 % Anomaly detection parameters
+% These affect online detection and labels generated from raw TPC-C data.
+% Bundled BARO labels and evaluate_anomaly_preservation use fixed 0.08/0.92
+% thresholds; changing these settings does not change that evaluation protocol.
 params.SPIKE_LIMIT = 0.92;   % Threshold for spike anomalies
 params.DIP_LIMIT = 0.08;     % Threshold for dip anomalies
 
@@ -35,11 +37,3 @@ params.verbose = true;       % Print batch-level progress
 % Visualization parameters
 visualization = struct();
 visualization.enable = true;  % Enable visualization
-visualization.save_figures = false; % Save figures to disk
-visualization.figure_format = 'png'; % Figure format
-
-% Logging parameters
-logging = struct();
-logging.enable = true;        % Enable logging
-logging.log_file = 'causample.log'; % Log file path
-logging.log_level = 'info';   % Log level: 'debug', 'info', 'warning', 'error'

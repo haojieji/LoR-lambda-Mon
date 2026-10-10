@@ -1,61 +1,60 @@
 function [r_Stru_i, r_B_i, r_Ord] = discover_causal_dependencies(IDX_i, W)
 % DISCOVER_CAUSAL_DEPENDENCIES Order, prune, and fit one metric cluster.
 %   Sparse Causal Structure Extractor, Step 2 (Section 4.1).
-%   IDX_i selects the cluster's rows from training matrix W. The routine
-%   orders metrics using residual dependence scores, removes spurious edges,
-%   and estimates the retained coefficients. Return local adjacency, causal
-%   weights in causal order, and the corresponding original metric indices.
-%   The KernelICA contrast helper below retains its original attribution.
+%   IDX_i is a row vector of K original metric indices into M-by-N training
+%   data W. Return K-by-K adjacency r_Stru_i and weights r_B_i in causal-order
+%   coordinates: (a,b) means r_Ord(b) -> r_Ord(a). r_Ord is a row vector of
+%   original metric indices, not cluster-local positions.
+%   Working orders/adjacency use positions 1:K in W(IDX_i,:); ols3 reorders
+%   the fitted matrix before return. KernelICA attribution is retained below.
 
-    W_i = W(IDX_i, :);
-    [M_i, n] = size(W_i);
-    Y = W_i; %
-    Ord = []; %
-    K_Ord = 1:M_i; %
-    % step1.
-    Y = bsxfun(@minus, Y, mean(Y, 2));
+    cluster_data = W(IDX_i, :);
+    [cluster_metric_count, num_times] = size(cluster_data);
+    residual_data = cluster_data;
+    local_order = [];
+    remaining_local_indices = 1:cluster_metric_count;
+    % 1. Center each metric before residual-dependence ordering.
+    residual_data = bsxfun(@minus, residual_data, mean(residual_data, 2));
 
-    r_Stru_i = ones(M_i,M_i);
+    r_Stru_i = ones(cluster_metric_count,cluster_metric_count);
 
-    % step2.
-    i=1;
-    while length(Ord) < M_i-1
-        candidates = setdiff(K_Ord, Ord);  %
-        % step2.1 Residual Matrix Res(M_i, size(W,2), M_i)
-        Res = computeR( Y, candidates, K_Ord, r_Stru_i);
-        i = i+1;
-        % step2.2 Most Independent metric k with its Res(:,:,k)
+    % 2. Repeatedly select the least dependent remaining metric.
+    iteration=1;
+    while length(local_order) < cluster_metric_count-1
+        candidates = setdiff(remaining_local_indices, local_order);
+        % Residual slice (:,:,k) removes candidate k from remaining metrics.
+        candidate_residuals = computeR( residual_data, candidates, remaining_local_indices, r_Stru_i);
+        iteration = iteration+1;
+        % Choose the candidate with the lowest residual-dependence score.
         if length(candidates) ==1
-            index = candidates;
+            selected_local_idx = candidates;
         else
-            index = findindex( Y, Res, candidates, K_Ord);
+            selected_local_idx = findindex( residual_data, candidate_residuals, candidates, remaining_local_indices);
         end
-        % step2.3 Append k to Ord
-        Ord = [Ord index];
+        % Append its cluster-local position to the causal order.
+        local_order = [local_order selected_local_idx];
 
+        remaining_local_indices(remaining_local_indices == selected_local_idx) = [];
 
-        K_Ord(K_Ord == index) = [];
+        % Prune dependencies between the remaining residuals.
+        r_Stru_i = rmSuprious( candidate_residuals, remaining_local_indices, selected_local_idx, r_Stru_i );
 
-        % step2.4
-        r_Stru_i = rmSuprious( Res, K_Ord, index, r_Stru_i );
-
-        % step2.4 Update Y to Remove the effect of k on remain mateics
-        Y = Res(:,:,index);
+        % Continue with the selected metric's effect removed.
+        residual_data = candidate_residuals(:,:,selected_local_idx);
     end
-    Ord = [Ord K_Ord];
-    r_Ord = IDX_i(Ord);
+    local_order = [local_order remaining_local_indices];
+    r_Ord = IDX_i(local_order);
 
-    r_Stru_Ord = r_Stru_i(Ord, Ord);
-    r_Stru_Ord = tril(r_Stru_Ord, -1);
-    r_Stru_i(Ord, Ord) = r_Stru_Ord;
+    ordered_structure = r_Stru_i(local_order, local_order);
+    ordered_structure = tril(ordered_structure, -1);
+    r_Stru_i(local_order, local_order) = ordered_structure;
 
-    % step3.
+    % 3. Fit retained edges; ols3 returns weights in causal-order coordinates.
 
-    r_B_i = ols3(W_i, Ord, r_Stru_i); % input r_Stru_i, output r_B_i
+    r_B_i = ols3(cluster_data, local_order, r_Stru_i);
     r_Stru_i = r_B_i ~= 0;
 end
 
-%
 function [J] = my_call_contrast(x)
 % Author: Yasuhiro Sogawa
 % Modified by SS (27 Sep 2010)
@@ -100,6 +99,7 @@ J = contrast_ica(contrast,x,kparam);
 end
 
 function R = computeR( X, candidates, U_K, M )
+% M is retained for signature compatibility; residuals do not consult it.
 
     [p,n] = size( X );
     R = zeros(p,n,p);
@@ -108,7 +108,7 @@ function R = computeR( X, candidates, U_K, M )
     for j = candidates
         if Cov(j,j)~=0
             for i = setdiff(U_K, j)
-                % skip residue calculation by using M
+                % Regress each remaining row on candidate j.
                 R(i,:,j) = X(i,:) - Cov(i,j)/Cov(j,j)*X(j,:);
             end
         end
@@ -130,13 +130,13 @@ function index = findindex( X, R, candidates, U_K )
         if minT == -1 %% SS (24 Sep 2010) Input: minT, X, R, j
             T_MI(j) = 0;
             for i = setdiff(U_K, j)
-                if all(R(i,:,j) == 0) %
+                if all(R(i,:,j) == 0)
                     R(i,:,j) = R(i,:,j) + 1e-10 * randn(1, size(R,2));
                 end
                 J = my_call_contrast([R(i,:,j); X(j,:)]); %using kernel based independence measure
                 if isnan(J)
                     warning('NaN detected, using fallback value');
-                    J = 0;  %
+                    J = 0;
                 end
                 T_MI(j) = T_MI(j) + J;
             end
@@ -144,13 +144,13 @@ function index = findindex( X, R, candidates, U_K )
         else
             T_MI(j) = 0;
             for i = setdiff(U_K, j)
-                if all(R(i,:,j) == 0) %
+                if all(R(i,:,j) == 0)
                     R(i,:,j) = R(i,:,j) + 1e-10 * randn(1, size(R,2));
                 end
                 J = my_call_contrast([R(i,:,j); X(j,:)]); %using kernel based independence measure
                 if isnan(J)
                     warning('NaN detected, using fallback value');
-                    J = 0;  %
+                    J = 0;
                 end
                 T_MI(j) = T_MI(j) + J;
                 if T_MI(j) > minT
@@ -169,11 +169,8 @@ function index = findindex( X, R, candidates, U_K )
 
 end
 
-%
-% input:Res(K_Ord,:,index), r_Stru
-% , IND=corr=Res*Res';  ，IND=MI(Res(i,:),Res(j,:))
-% r_Stru(i,j)=r_Stru(j,i)=0 if (Res(i,:) \perp Res(j,:) | index)
-% output: r_Stru
+% Prune both candidate directions when the residual pair is independent
+% after removing the selected metric; indices remain cluster-local.
 function r_Stru = rmSuprious( Res, K_Ord, index, r_Stru )
     R = Res(:,:,index);
     for j = 1:length(K_Ord)
@@ -182,7 +179,6 @@ function r_Stru = rmSuprious( Res, K_Ord, index, r_Stru )
             i_ord = K_Ord(i);
             if r_Stru(j_ord,i_ord)==1 || r_Stru(i_ord,j_ord)==1
                 J = my_call_contrast(R([j_ord i_ord],:)); %using kernel based independence measure
-                %disp(["j_ord:", j_ord, " i_ord:",i_ord, " IND:",J])
                 if J < 0.001
                     r_Stru(j_ord, i_ord) = 0;
                     r_Stru(i_ord, j_ord) = 0;

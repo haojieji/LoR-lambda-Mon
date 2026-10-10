@@ -36,49 +36,16 @@ end
 
 fprintf('=== CauSample dataset: %s ===\n', dataset.name);
 
-switch dataset.type
-    case 'raw'
-        load(dataset.path, 'dataMatrix', 'columnNames');
-
-        % preprocess_metric_data reads dataMatrix/columnNames and writes X, X_e,
-        % labels, normalization metadata, and selected metric names into
-        % this workspace.
-        run(fullfile(srcDir, 'preprocess_metric_data.m'));
-
-    case 'preprocessed'
-        requiredVars = {'X', 'X_e', 'Labels_anomalies_X', 'X_min', ...
-                        'X_max', 'X_max_min', 'columnIDX', 'columnNames'};
-        data = load(dataset.path, requiredVars{:});
-        for iVar = 1:numel(requiredVars)
-            if ~isfield(data, requiredVars{iVar})
-                error('Preprocessed dataset lacks required variable: %s', requiredVars{iVar});
-            end
-        end
-
-        X = double(data.X);
-        X_e = double(data.X_e);
-        Labels_anomalies_X = double(data.Labels_anomalies_X);
-        X_min = double(data.X_min);
-        X_max = double(data.X_max);
-        X_max_min = double(data.X_max_min);
-        columnIDX = double(data.columnIDX);
-        columnNames = string(data.columnNames);
-
-        % Some legacy BARO MAT files keep the original metric-name vector.
-        % Align names to the filtered metric rows used by X/X_e here so the
-        % rest of the pipeline can use a simple metric-only name vector.
-        if numel(columnNames) ~= size(X, 1)
-            if numel(columnIDX) == size(X, 1) && max(columnIDX) <= numel(columnNames)
-                columnNames = columnNames(columnIDX);
-                columnIDX = 1:size(X, 1);
-            else
-                error('columnNames cannot be aligned with the %d metrics in X.', size(X, 1));
-            end
-        end
-
-    otherwise
-        error('Unsupported dataset type: %s', dataset.type);
-end
+data = load_causample_dataset(dataset, params);
+X = data.X;
+X_e = data.X_e;
+Labels_anomalies_X = data.Labels_anomalies_X;
+X_min = data.X_min;
+X_max = data.X_max;
+X_max_min = data.X_max_min;
+columnIDX = data.columnIDX;
+columnNames = data.columnNames;
+clear data;
 
 T = dataset.batch_size;
 w = dataset.window_size;

@@ -5,10 +5,10 @@ Start with `results = CauSample('tpc_c');` after running `prepare_causample_data
 ## Suggested reading order
 
 1. [CauSample.m](CauSample.m): public runner, output metrics, and timing summaries. [causample_config.m](causample_config.m) holds shared algorithm and visualization parameters; [causample_dataset_config.m](causample_dataset_config.m) supplies dataset keys, paths, sizes, and overrides to both the runner and validator.
-2. [preprocess_metric_data.m](preprocess_metric_data.m): metric filtering, per-metric labels, normalization, and overlapping training windows for raw input.
+2. [load_causample_dataset.m](load_causample_dataset.m): shared input loading and metric-name alignment. It calls [preprocess_metric_data.m](preprocess_metric_data.m) for raw input; that function explicitly accepts the data, names, dataset settings, and algorithm parameters and returns the prepared arrays.
 3. [causample_pipeline.m](causample_pipeline.m): the main training and online loop. Read its stages alongside the [paper-to-code component mapping](../docs/algorithm_overview.md).
 4. Follow the component files below for the details of each stage.
-5. [evaluate_anomaly_preservation.m](evaluate_anomaly_preservation.m): anomaly precision, recall, and F1 under the bundled label protocol. [validate_causample.m](validate_causample.m) and [test_causample.m](test_causample.m) provide input validation and a lightweight smoke check.
+5. [evaluate_anomaly_preservation.m](evaluate_anomaly_preservation.m): anomaly precision, recall, and F1 under the bundled label protocol. [validate_causample.m](validate_causample.m) and [test_causample.m](test_causample.m) check inputs and source availability, not execution of the algorithm.
 
 ## Paper components
 
@@ -22,7 +22,18 @@ Start with `results = CauSample('tpc_c');` after running `prepare_causample_data
 | 4.5 — Fine-Grained Reconstructor | [Fine_Grained_Reconstructor.m](Fine_Grained_Reconstructor.m) handles current-batch and delayed reconstruction, using [fit_reconstruction_coefficients.m](fit_reconstruction_coefficients.m) and [augment_temporal_history.m](augment_temporal_history.m). |
 | 4.6 — Model Updater | [Model_Updater.m](Model_Updater.m) updates anomaly propagation parameters from collected events. The pipeline coordinates these updates with temporal-history maintenance in [Low_Rank_Sampler.m](Low_Rank_Sampler.m). |
 
-[causample_pipeline.m](causample_pipeline.m) remains the orchestration layer for these components, including batch state, timing, and visualization. This mapping identifies implementation responsibilities; it does not establish full mathematical or experimental validation against the paper.
+[causample_pipeline.m](causample_pipeline.m) coordinates batch state and timing. Optional figures are drawn by [plot_causal_structure.m](plot_causal_structure.m). Component headers document operation signatures, array dimensions, and updated state. The existing positional component interfaces are retained. This mapping identifies implementation responsibilities; it does not establish full mathematical or experimental validation against the paper.
+
+## Index and state conventions
+
+- `X` uses the original timeline; `X_e` repeats overlapping training segments before appending the online batches. Their online time indices differ by `(w_size-w)*T`.
+- `batch_idx` in the pipeline indexes segments in `X_e`; a batch-local sample index ranges from 1 to `T`. The anomaly model stores event times and `Lambda` on the original timeline.
+- `B` uses global metric IDs. Cluster-local and causally ordered indices must be mapped back through the cluster/order arrays before accessing `B`.
+- `sample_budget` is a requested number of samples, not a sampling frequency. The base schedule converts it to an integer interval.
+- `pending_batch == 0` selects normal adaptive sampling. A nonzero value identifies the batch awaiting reconstruction; `recovery_batch_count` counts the subsequently collected full batches.
+- `_r` identifies base-sampling outputs and `_L` identifies additional-sampling outputs. Sampled anomalies are stored separately; the union of normal and anomaly indicators identifies all collected entries.
+
+Anomaly-coordinate differences retained from the earlier implementation are noted next to their calculations in [Anomaly_Sampler.m](Anomaly_Sampler.m), [Composite_Sampler.m](Composite_Sampler.m), and [Model_Updater.m](Model_Updater.m). They were not changed as part of renaming or documentation cleanup.
 
 ## Helpers and attribution
 

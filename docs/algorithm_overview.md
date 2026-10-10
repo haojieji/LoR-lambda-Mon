@@ -24,7 +24,7 @@ All source files below are in `src/`.
 | Fine-Grained Reconstructor | 4.5 | [Fine_Grained_Reconstructor.m](../src/Fine_Grained_Reconstructor.m) handles current-batch and delayed reconstruction, using [fit_reconstruction_coefficients.m](../src/fit_reconstruction_coefficients.m) and [augment_temporal_history.m](../src/augment_temporal_history.m). |
 | Model Updater | 4.6 | [Model_Updater.m](../src/Model_Updater.m) updates anomaly propagation parameters. [causample_pipeline.m](../src/causample_pipeline.m) coordinates this with temporal-history maintenance in [Low_Rank_Sampler.m](../src/Low_Rank_Sampler.m) for later batches. |
 
-The pipeline retains orchestration, batch state, timings, and visualization.
+The pipeline retains orchestration, batch state, and timings; [plot_causal_structure.m](../src/plot_causal_structure.m) handles optional visualization.
 Retained legacy auxiliaries, including
 `refine_causal_structure.m`, are outside the main path; the
 [source guide](../src/README.md#helpers-and-attribution) identifies them and
@@ -40,8 +40,10 @@ preserves their attributions.
 | `w` | Training-window batch count, corresponding to paper `W` |
 | `w_size` | Enhanced training-batch count, `T*w - T + 1` |
 | `X_e` | Enhanced training segments followed by online batches |
+| `batch_idx` | Segment index in `X_e`, including the enhanced training segments |
 | `B`, `Stru`, `Ord` | Weighted adjacency, binary adjacency, and causal order |
 | `U_W` | Historical temporal columns used by reconstruction |
+| `pending_batch`, `recovery_batch_count` | Batch awaiting reconstruction and number of subsequently collected full batches |
 | `Omega_e` | Sampling matrix for observations retained as normal values |
 | `Omega_Anomalies_e` | Sampling matrix for collected anomalies |
 
@@ -49,6 +51,6 @@ preserves their attributions.
 
 [CauSample.m](../src/CauSample.m) loads shared parameters from [causample_config.m](../src/causample_config.m), applies dataset settings through [causample_dataset_config.m](../src/causample_dataset_config.m), invokes preprocessing and the core algorithm, and reports sampling ratio, NMAE, anomaly precision/recall/F1, and timing measurements. These evaluation categories are described in Section 5.1.
 
-[prepare_causample_data.m](../src/prepare_causample_data.m) prepares the bundled TPC-C input with [import_dataset_from_csv.m](../src/import_dataset_from_csv.m). [preprocess_metric_data.m](../src/preprocess_metric_data.m) prepares metric matrices, labels, normalization information, and enhanced training segments. [evaluate_anomaly_preservation.m](../src/evaluate_anomaly_preservation.m) compares anomalies in the reconstructed output with the per-metric Cauchy labels. [validate_causample.m](../src/validate_causample.m) shares the dataset configuration with the runner and checks input availability and dimensions.
+[prepare_causample_data.m](../src/prepare_causample_data.m) prepares the bundled TPC-C input with [import_dataset_from_csv.m](../src/import_dataset_from_csv.m). The runner and validator share [load_causample_dataset.m](../src/load_causample_dataset.m) for loading and metric-name alignment. For raw data, [preprocess_metric_data.m](../src/preprocess_metric_data.m) returns metric matrices, labels, normalization information, and enhanced training segments from explicit inputs. [evaluate_anomaly_preservation.m](../src/evaluate_anomaly_preservation.m) compares anomalies in the reconstructed output with the per-metric Cauchy labels. [validate_causample.m](../src/validate_causample.m) checks input availability and dimensions.
 
 See the [README](../README.md) for usage, the [data format guide](data_format.md) for input requirements and label protocol, and the [source guide](../src/README.md) for a suggested reading order and helper attributions.

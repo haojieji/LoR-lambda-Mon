@@ -4,34 +4,47 @@ function varargout = Anomaly_Sampler(operation, varargin)
 %   random acceptance, anomaly detection, and event insertion; this component
 %   computes the intensities and excitation state used by that sampler.
 %
-%   [lambda_curt, lambda_max, G, Lambda, Lambda_normalize] = ...
-%       Anomaly_Sampler('initial', m, ti, T, w_size, w, events, Par, ...
+%   [lambda_current, lambda_max, G, Lambda, Lambda_normalize] = ...
+%       Anomaly_Sampler('initial', metric_idx, enhanced_base_time, T, ...
+%       w_size, w, events, Par, ...
 %       anomaly_mu, anomaly_A, anomaly_beta, G, Lambda, Lambda_normalize, ...
-%       range_w_lambda)
-%   Initialize the intensity at a base sample and its candidate-time bound.
+%       original_window_times)
+%   Return scalar base intensity and its bound; overwrite G entries for
+%   parents with available events and store this time's intensity/probability.
 %
 %   [lambda_candidate, G, Lambda, Lambda_normalize] = ...
-%       Anomaly_Sampler('candidate', m, tj, interval_Y, T, w_size, w, ...
+%       Anomaly_Sampler('candidate', metric_idx, enhanced_candidate_time, ...
+%       interval_Y, T, w_size, w, ...
 %       events, Par, anomaly_mu, anomaly_A, anomaly_beta, G, Lambda, ...
 %       Lambda_normalize)
-%   Evaluate a candidate using accumulated excitation and available events.
+%   Return scalar candidate intensity, add new event contributions to G, and
+%   store this time's intensity/probability. interval_Y is the candidate gap.
 %
 %   [lambda_candidate, G, Lambda, Lambda_normalize] = ...
-%       Anomaly_Sampler('self', m, tj, T, w_size, w, anomaly_A, ...
+%       Anomaly_Sampler('self', metric_idx, enhanced_candidate_time, T, ...
+%       w_size, w, anomaly_A, ...
 %       anomaly_beta, lambda_candidate, G, Lambda, Lambda_normalize)
-%   Add self-excitation after the caller inserts a sampled anomaly event.
+%   After event insertion by the caller, add self-excitation to the scalar
+%   candidate intensity and G(metric_idx,metric_idx), then store the result.
 %
-%   [Lambda, Lambda_normalize] = Anomaly_Sampler('history', M, time_range, ...
-%       normalization_range, events, Par, anomaly_mu, anomaly_A, ...
+%   [Lambda, Lambda_normalize] = Anomaly_Sampler('history', M, ...
+%       original_time_range, normalization_time_range, events, Par, ...
+%       anomaly_mu, anomaly_A, ...
 %       anomaly_beta, Lambda, Lambda_normalize)
-%   Evaluate training or updated history. normalization_range selects the
-%   denominator's columns; [] uses the entire metric row of Lambda.
+%   Replace the selected original-time columns for all M metrics. The
+%   normalization_time_range selects denominator columns; [] uses the full
+%   metric row. Other operations also normalize using the full metric row.
 %
-%   ti/tj retain the composite sampler's enhanced-timeline coordinates;
-%   event lookup and stored intensities use ti/tj-w_size*T+w*T. Calculations
-%   preserve the existing time differences, normalization ranges, and event
-%   boundaries. Candidate decay affects the evaluated intensity, while G
-%   itself changes only when event contributions are accumulated.
+%   Shared shapes: anomaly_mu is M-by-1; anomaly_A, anomaly_beta, and G are
+%   M-by-M (target metric by parent). events and Par are M-by-1 cells holding
+%   row vectors of original event times and allowed parent/self metric indices.
+%   Lambda/Lambda_normalize are M-by-original_time_count arrays. Events,
+%   parents, and parameters are read-only; only returned state is modified.
+%   T is the segment length; w_size/w are enhanced/original window batch counts.
+%   Enhanced times map to original times by subtracting w_size*T, then adding
+%   w*T. Initial intensity retains a legacy mixed-coordinate lag (see below).
+%   Candidate decay affects the evaluated intensity; G changes only when
+%   event contributions are accumulated, and is not replaced by its decay.
 
 switch operation
     case 'initial'
@@ -47,77 +60,94 @@ switch operation
 end
 end
 
-function [lambda_curt, lambda_max, G, Lambda, Lambda_normalize] = ...
-    initialIntensity(m, ti, T, w_size, w, events, Par, anomaly_mu, anomaly_A, ...
-    anomaly_beta, G, Lambda, Lambda_normalize, range_w_lambda)
-lambda_curt = anomaly_mu(m);
-for m_prime = Par{m}
-    past_events = events{m_prime}(events{m_prime} <= ti-w_size*T+w*T);
+function [lambda_current, lambda_max, G, Lambda, Lambda_normalize] = ...
+    initialIntensity(metric_idx, enhanced_base_time, T, w_size, w, events, Par, ...
+    anomaly_mu, anomaly_A, anomaly_beta, G, Lambda, Lambda_normalize, original_window_times)
+lambda_current = anomaly_mu(metric_idx);
+for parent_metric_idx = Par{metric_idx}
+    past_events = events{parent_metric_idx}(events{parent_metric_idx} <= ...
+        enhanced_base_time-w_size*T+w*T);
     if ~isempty(past_events)
-        dt = ti - past_events;
-        contrib = anomaly_A(m, m_prime) * anomaly_beta(m, m_prime) * exp(-anomaly_beta(m, m_prime) * dt);
-        G(m, m_prime) = sum(contrib);
-        lambda_curt = lambda_curt + G(m, m_prime);
+        % Legacy lag: enhanced base time minus original event times. Preserve
+        % this expression even though the event cutoff uses original time.
+        dt = enhanced_base_time - past_events;
+        contrib = anomaly_A(metric_idx, parent_metric_idx) * ...
+            anomaly_beta(metric_idx, parent_metric_idx) * ...
+            exp(-anomaly_beta(metric_idx, parent_metric_idx) * dt);
+        G(metric_idx, parent_metric_idx) = sum(contrib);
+        lambda_current = lambda_current + G(metric_idx, parent_metric_idx);
     end
 end
-lambda_curt = max(0,lambda_curt);
-Lambda(m,ti-w_size*T+w*T) = lambda_curt;
-lambda_max = max(Lambda(m,range_w_lambda));
-Lambda_normalize(m, ti-w_size*T+w*T) = lambda_curt/max(eps, max(Lambda(m,:)));
+lambda_current = max(0,lambda_current);
+Lambda(metric_idx,enhanced_base_time-w_size*T+w*T) = lambda_current;
+lambda_max = max(Lambda(metric_idx,original_window_times));
+Lambda_normalize(metric_idx, enhanced_base_time-w_size*T+w*T) = lambda_current/max(eps, ...
+    max(Lambda(metric_idx,:)));
 end
 
 function [lambda_candidate, G, Lambda, Lambda_normalize] = ...
-    candidateIntensity(m, tj, interval_Y, T, w_size, w, events, Par, ...
-    anomaly_mu, anomaly_A, anomaly_beta, G, Lambda, Lambda_normalize)
-lambda_candidate = anomaly_mu(m);
-for m_prime = Par{m}
-    lambda_candidate = lambda_candidate + G(m,m_prime) * exp(-anomaly_beta(m, m_prime) * interval_Y);
+    candidateIntensity(metric_idx, enhanced_candidate_time, interval_Y, T, w_size, w, ...
+    events, Par, anomaly_mu, anomaly_A, anomaly_beta, G, Lambda, Lambda_normalize)
+lambda_candidate = anomaly_mu(metric_idx);
+for parent_metric_idx = Par{metric_idx}
+    lambda_candidate = lambda_candidate + G(metric_idx,parent_metric_idx) * ...
+        exp(-anomaly_beta(metric_idx, parent_metric_idx) * interval_Y);
 end
-% Add contributions from newly available parent/self anomalies.
-for m_prime = Par{m}
-    add_events = events{m_prime}(events{m_prime}<=tj-w_size*T+w*T & events{m_prime}>tj-w_size*T+w*T-interval_Y);
+% Select new parent/self events in the original-time interval (start, end].
+for parent_metric_idx = Par{metric_idx}
+    add_events = events{parent_metric_idx}( ...
+        events{parent_metric_idx}<=enhanced_candidate_time-w_size*T+w*T & ...
+        events{parent_metric_idx}>enhanced_candidate_time-w_size*T+w*T-interval_Y);
     if ~isempty(add_events)
-        dt = tj-w_size*T+w*T - add_events;
-        contrib = anomaly_A(m, m_prime)*anomaly_beta(m, m_prime)*exp(-anomaly_beta(m, m_prime).*dt);
-        G(m, m_prime) = G(m, m_prime)+ sum(contrib);
+        dt = enhanced_candidate_time-w_size*T+w*T - add_events;
+        contrib = anomaly_A(metric_idx, parent_metric_idx)* ...
+            anomaly_beta(metric_idx, parent_metric_idx)* ...
+            exp(-anomaly_beta(metric_idx, parent_metric_idx).*dt);
+        G(metric_idx, parent_metric_idx) = G(metric_idx, parent_metric_idx)+ sum(contrib);
         lambda_candidate = lambda_candidate + sum(contrib);
     end
 end
-Lambda(m,tj-w_size*T+w*T) = lambda_candidate;
-Lambda_normalize(m, tj-w_size*T+w*T) = Lambda(m,tj-w_size*T+w*T)/max(eps,max(Lambda(m, :)));
+Lambda(metric_idx,enhanced_candidate_time-w_size*T+w*T) = lambda_candidate;
+Lambda_normalize(metric_idx, enhanced_candidate_time-w_size*T+w*T) = ...
+    Lambda(metric_idx,enhanced_candidate_time-w_size*T+w*T)/max(eps,max(Lambda(metric_idx, :)));
 end
 
 function [lambda_candidate, G, Lambda, Lambda_normalize] = ...
-    selfExcitation(m, tj, T, w_size, w, anomaly_A, anomaly_beta, ...
+    selfExcitation(metric_idx, enhanced_candidate_time, T, w_size, w, anomaly_A, anomaly_beta, ...
     lambda_candidate, G, Lambda, Lambda_normalize)
-new_contrib = anomaly_A(m,m)*anomaly_beta(m,m);
-G(m,m) = G(m,m) + new_contrib;
+new_contrib = anomaly_A(metric_idx,metric_idx)*anomaly_beta(metric_idx,metric_idx);
+G(metric_idx,metric_idx) = G(metric_idx,metric_idx) + new_contrib;
 lambda_candidate = lambda_candidate + new_contrib;
 
-Lambda(m,tj-w_size*T+w*T) = lambda_candidate;
-Lambda_normalize(m, tj-w_size*T+w*T) = Lambda(m,tj-w_size*T+w*T)/max(eps,max(Lambda(m, :)));
+Lambda(metric_idx,enhanced_candidate_time-w_size*T+w*T) = lambda_candidate;
+Lambda_normalize(metric_idx, enhanced_candidate_time-w_size*T+w*T) = ...
+    Lambda(metric_idx,enhanced_candidate_time-w_size*T+w*T)/max(eps,max(Lambda(metric_idx, :)));
 end
 
-function [Lambda, Lambda_normalize] = historyIntensity(M, time_range, ...
-    normalization_range, events, Par, anomaly_mu, anomaly_A, anomaly_beta, ...
+function [Lambda, Lambda_normalize] = historyIntensity(M, original_time_range, ...
+    normalization_time_range, events, Par, anomaly_mu, anomaly_A, anomaly_beta, ...
     Lambda, Lambda_normalize)
-for i = 1:M
-    for j = time_range
-        lambda_i_j = anomaly_mu(i);
-        for m_prime = Par{i}
-            past_events = events{m_prime}(events{m_prime}<=j);
+for metric_idx = 1:M
+    for original_time = original_time_range
+        lambda_i_j = anomaly_mu(metric_idx);
+        for parent_metric_idx = Par{metric_idx}
+            past_events = events{parent_metric_idx}(events{parent_metric_idx}<=original_time);
             if ~isempty(past_events)
-                dt = j-past_events;
-                contrib = anomaly_A(i, m_prime) * anomaly_beta(i, m_prime) * exp(-anomaly_beta(i, m_prime)*dt);
+                dt = original_time-past_events;
+                contrib = anomaly_A(metric_idx, parent_metric_idx) * ...
+                    anomaly_beta(metric_idx, parent_metric_idx) * ...
+                    exp(-anomaly_beta(metric_idx, parent_metric_idx)*dt);
                 lambda_i_j = lambda_i_j + sum(contrib);
             end
         end
-        Lambda(i,j) = lambda_i_j;
+        Lambda(metric_idx,original_time) = lambda_i_j;
     end
-    if isempty(normalization_range)
-        Lambda_normalize(i,time_range) = Lambda(i,time_range)./max(Lambda(i,:));
+    if isempty(normalization_time_range)
+        Lambda_normalize(metric_idx,original_time_range) = ...
+            Lambda(metric_idx,original_time_range)./max(Lambda(metric_idx,:));
     else
-        Lambda_normalize(i,time_range) = Lambda(i,time_range)./max(Lambda(i,normalization_range));
+        Lambda_normalize(metric_idx,original_time_range) = ...
+            Lambda(metric_idx,original_time_range)./max(Lambda(metric_idx,normalization_time_range));
     end
 end
 end

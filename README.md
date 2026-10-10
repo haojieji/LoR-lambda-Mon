@@ -55,7 +55,16 @@ validate_causample('online_boutique')
 validate_causample('sock_shop')
 ```
 
-These utilities check input availability and matrix dimensions. [test_causample.m](src/test_causample.m) provides a lightweight smoke check. Neither replaces an experiment through `CauSample`. Full MATLAB experiments were not rerun during this naming and module refactor.
+These utilities check input availability and matrix dimensions. [test_causample.m](src/test_causample.m) provides the same input preflight together with source-file checks; it does not execute sampling or reconstruction. Neither replaces an experiment through `CauSample`.
+
+The preprocessing regression check compares the explicit function with the preceding script implementation on synthetic inputs. From the repository root, run:
+
+```matlab
+addpath('tests')
+test_preprocess_metric_data
+```
+
+Full MATLAB experiments and runtime performance were not revalidated during this readability refactor.
 
 ## Data sources
 

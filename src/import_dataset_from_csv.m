@@ -75,17 +75,21 @@ switch datasetType
         dataset.window_size = 7;
         dataset.max_time_steps = 700;
 
-        run(fullfile(srcDir, 'preprocess_metric_data.m'));
+        data = preprocess_metric_data(dataMatrix, columnNames, dataset, params);
 
         outputDir = fileparts(outputPath);
         if ~isempty(outputDir) && exist(outputDir, 'dir') ~= 7
             mkdir(outputDir);
         end
 
-        save(outputPath, 'dataMatrix', 'rawColumnNames', 'columnNames', ...
-            'timestamps', 'timeVector', 'csvPath', 'X', 'X_e', ...
-            'Labels_anomalies_X', 'X_min', 'X_max', 'X_max_min', ...
-            'columnIDX', 'Omega_Cauchy_large', 'Omega_Cauchy_small');
+        % Preserve the prepared fields and source metadata in the MAT format
+        % consumed by existing runners and analysis scripts.
+        data.dataMatrix = dataMatrix;
+        data.rawColumnNames = rawColumnNames;
+        data.timestamps = timestamps;
+        data.timeVector = timeVector;
+        data.csvPath = csvPath;
+        save(outputPath, '-struct', 'data');
 
     otherwise
         error('Unknown dataset type "%s". Use ''tpc_c'' or ''baro'' (''oltp'' is an alias for ''tpc_c'').', datasetType);

@@ -2,54 +2,58 @@ function [W, U_W, Omega_Cauchy_large, Omega_Cauchy_small, Cauchy_MEDIANs, Cauchy
     Anomaly_Detector_Training(W, U_W, SPIKE_LIMIT, DIP_LIMIT, Omega_Cauchy_large, ...
     Omega_Cauchy_small, Cauchy_Trans)
 % ANOMALY_DETECTOR_TRAINING Separate anomalies from training representations.
-%   Anomaly Detector (Section 4.1).
-%   Apply the robust Cauchy detector to each row of W, return spike/dip
-%   indicators and detector statistics, and linearly interpolate detected
-%   anomalies in W and the corresponding historical columns U_W.
+%   Anomaly Detector (Section 4.1). W is M-by-N training data, N = T*H;
+%   U_W is T-by-H-by-M history; its columns flatten chronologically to W(m,:).
+%   SPIKE_LIMIT/DIP_LIMIT are scalar CDF cutoffs. Cauchy_Trans(values,median)
+%   is a shape-preserving transform. Input/output spike/dip masks are
+%   M-by-at-least-N state arrays: detected entries are set to 1, not cleared.
+%   Return interpolated W/U_W, masks in the same order, and 1-by-M medians
+%   and median absolute deviations computed from W before interpolation.
+%   Mask columns beyond N must be zero. When all entries are flagged, interpolation uses the less frequent type
+%   (dip on a tie); the two returned spike/dip masks retain their flags.
 
 M = size(W,1);
 
-% 1
+% 1. Compute robust statistics and transform each metric.
 Cauchy_MEDIANs = median( W' );
 Cauchy_MADs = median(abs(W' - Cauchy_MEDIANs));
 Cauchy_Trans_W = zeros(size(W));
 Cauchy_CDF = zeros(size(W));
-for j = 1:M
-    Cauchy_Trans_W(j,:) = Cauchy_Trans( W(j,:), Cauchy_MEDIANs(j) );
-%     if Cauchy_MADs(j)>0
-        Cauchy_CDF(j,:) = (1/pi) * atan( (Cauchy_Trans_W(j,:)-Cauchy_MEDIANs(j))/(Cauchy_MADs(j)+eps) ) + 0.5;
+for metric_idx = 1:M
+    Cauchy_Trans_W(metric_idx,:) = Cauchy_Trans( W(metric_idx,:), Cauchy_MEDIANs(metric_idx) );
+    Cauchy_CDF(metric_idx,:) = (1/pi) * atan( (Cauchy_Trans_W(metric_idx,:)-Cauchy_MEDIANs(metric_idx))/(Cauchy_MADs(metric_idx)+eps) ) + 0.5;
 
-        % 2.
-        Omega_Cauchy_large(j, Cauchy_CDF(j,:)>SPIKE_LIMIT) = 1; % spike
-        Omega_Cauchy_small(j, Cauchy_CDF(j,:)<DIP_LIMIT) = 1; % dip
-%     end
+    % 2. Mark tail events without clearing existing flags.
+    Omega_Cauchy_large(metric_idx, Cauchy_CDF(metric_idx,:)>SPIKE_LIMIT) = 1; % spike
+    Omega_Cauchy_small(metric_idx, Cauchy_CDF(metric_idx,:)<DIP_LIMIT) = 1; % dip
 
 end
 
-% 3.
+% 3. Keep one anomaly type if their union covers the entire row.
 Omega_Cauchy = double(Omega_Cauchy_large | Omega_Cauchy_small);
-for j=1:M
-    if sum(Omega_Cauchy(j,:)) == size(W,2)
-        if sum(Omega_Cauchy_large(j,:)) < sum(Omega_Cauchy_small(j,:))
-            Omega_Cauchy(j,:) = Omega_Cauchy_large(j,:);
+for metric_idx=1:M
+    if sum(Omega_Cauchy(metric_idx,:)) == size(W,2)
+        if sum(Omega_Cauchy_large(metric_idx,:)) < sum(Omega_Cauchy_small(metric_idx,:))
+            Omega_Cauchy(metric_idx,:) = Omega_Cauchy_large(metric_idx,:);
         else
-            Omega_Cauchy(j,:) = Omega_Cauchy_small(j,:);
+            Omega_Cauchy(metric_idx,:) = Omega_Cauchy_small(metric_idx,:);
         end
     end
 end
 W(Omega_Cauchy==1) = 0;
 
-% 4. GroundTruth = W(Omega_Cauchy==0) + Anomalies(Omega_Cauchy==1);
-for j=1:M
-    idx_anomalies = find( Omega_Cauchy(j, 1:size(W,2))==1 );
-    U_W_j = U_W(:,:,j);
-    U_W_j(idx_anomalies) = 0;
-    if ~isempty(idx_anomalies)
-        idx_nomalies = find( Omega_Cauchy(j, 1:size(W,2))==0 );
-        val = interp1(idx_nomalies, W(j,idx_nomalies), idx_anomalies,'linear','extrap');
-        W(j, idx_anomalies) = val;
-        U_W_j(idx_anomalies) = val;
-        U_W(:,:,j) = U_W_j;
+% 4. Interpolate normal values at anomalous times (linear extrapolation at ends).
+for metric_idx=1:M
+    anomaly_indices = find( Omega_Cauchy(metric_idx, 1:size(W,2))==1 );
+    % Column-major indexing follows the chronological T-sample history columns.
+    metric_history = U_W(:,:,metric_idx);
+    metric_history(anomaly_indices) = 0;
+    if ~isempty(anomaly_indices)
+        normal_indices = find( Omega_Cauchy(metric_idx, 1:size(W,2))==0 );
+        interpolated_values = interp1(normal_indices, W(metric_idx,normal_indices), anomaly_indices,'linear','extrap');
+        W(metric_idx, anomaly_indices) = interpolated_values;
+        metric_history(anomaly_indices) = interpolated_values;
+        U_W(:,:,metric_idx) = metric_history;
     end
 end
 
