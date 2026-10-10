@@ -1,7 +1,7 @@
 % CauSample configuration.
 %
-% Dataset selection is intentionally kept in CauSample.m so the public
-% running interface stays simple:
+% Dataset paths and overrides are shared through causample_dataset_config.m.
+% Select a dataset through the public runner:
 %   CauSample
 %   CauSample('online_boutique')
 %   CauSample('sock_shop')

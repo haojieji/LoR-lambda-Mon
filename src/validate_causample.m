@@ -3,7 +3,7 @@ function ok = validate_causample(datasetName)
 %
 % Usage
 %   validate_causample
-%   validate_causample('oltp')
+%   validate_causample('tpc_c')
 %   validate_causample('online_boutique')
 %   validate_causample('sock_shop')
 
@@ -11,9 +11,8 @@ ok = false;
 
 try
     if nargin < 1 || isempty(datasetName)
-        datasetName = 'oltp';
+        datasetName = 'tpc_c';
     end
-    datasetName = lower(strtrim(char(datasetName)));
 
     fprintf('=== CauSample validation ===\n');
 
@@ -25,44 +24,8 @@ try
     run(configPath);
     fprintf('OK  Configuration loaded\n');
 
-    switch datasetName
-        case 'oltp'
-            dataset = struct();
-            dataset.name = 'OLTP';
-            dataset.path = '../dataset/mysql_510_608_withLabels.mat';
-            dataset.csv_path = '../dataset/combined_metrics_510_608_with_labels.csv';
-            dataset.type = 'raw';
-            dataset.batch_size = 100;
-            dataset.window_size = 23;
-            dataset.max_time_steps = 11600;
-
-        case 'online_boutique'
-            dataset = struct();
-            dataset.name = 'Online Boutique';
-            dataset.path = '../dataset/BARO_OB_w7T50.mat';
-            dataset.type = 'preprocessed';
-            dataset.batch_size = 50;
-            dataset.window_size = 7;
-            dataset.max_time_steps = 700;
-
-        case 'sock_shop'
-            dataset = struct();
-            dataset.name = 'Sock Shop';
-            dataset.path = '../dataset/BARO_SS_w7T50.mat';
-            dataset.type = 'preprocessed';
-            dataset.batch_size = 50;
-            dataset.window_size = 7;
-            dataset.max_time_steps = 700;
-
-        otherwise
-            error(['Unknown dataset "%s". Use ''oltp'', ''online_boutique'', ' ...
-                   'or ''sock_shop''.'], datasetName);
-    end
-
-    dataset.path = resolvePath(srcDir, dataset.path);
-    if isfield(dataset, 'csv_path')
-        dataset.csv_path = resolvePath(srcDir, dataset.csv_path);
-    end
+    [dataset, params] = causample_dataset_config(datasetName, params);
+    datasetName = dataset.id;
 
     assert(exist(fullfile(srcDir, 'causample_pipeline.m'), 'file') == 2, ...
         'Core function causample_pipeline.m is missing.');
@@ -146,16 +109,5 @@ catch ME
     if ~isempty(ME.stack)
         fprintf('  at %s:%d\n', ME.stack(1).file, ME.stack(1).line);
     end
-end
-end
-
-function resolvedPath = resolvePath(baseDir, pathText)
-pathText = char(pathText);
-if startsWith(pathText, filesep) || ...
-        ~isempty(regexp(pathText, '^[A-Za-z]:[\\/]', 'once')) || ...
-        startsWith(pathText, '\\')
-    resolvedPath = pathText;
-else
-    resolvedPath = fullfile(baseDir, pathText);
 end
 end

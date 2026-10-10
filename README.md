@@ -12,7 +12,7 @@ Code, data, and supplementary proofs for **CauSample**, an adaptive metric sampl
 | Directory or file | Contents |
 | --- | --- |
 | [src/](src/README.md) | MATLAB implementation, suggested reading order, and helper attribution |
-| [dataset/](dataset/README.md) | TPC-C/OLTP trace, fault timeline, and selected Online Boutique and Sock Shop metric data |
+| [dataset/](dataset/README.md) | TPC-C trace, fault timeline, and selected Online Boutique and Sock Shop metric data |
 | [docs/algorithm_overview.md](docs/algorithm_overview.md) | Mapping from paper components to implementation files |
 | [docs/data_format.md](docs/data_format.md) | Data formats, preprocessing, and evaluation labels |
 | [appendix.pdf](appendix.pdf) | Supplementary proofs and derivations |
@@ -32,34 +32,34 @@ Download the repository and open MATLAB in its `src` directory:
 ```matlab
 cd('path/to/artifact/src')
 
-% Prepare the bundled OLTP input; the two BARO MAT files are already included.
+% Prepare the bundled TPC-C input; the two BARO MAT files are already included.
 prepare_causample_data
 
 % Run a dataset and return its evaluation results.
-results = CauSample('oltp');
+results = CauSample('tpc_c');
 % results = CauSample('online_boutique');
 % results = CauSample('sock_shop');
 ```
 
-[CauSample.m](src/CauSample.m) is the public runner, and [causample_pipeline.m](src/causample_pipeline.m) coordinates the core algorithm. The runner reports sampling ratio, normalized mean absolute error (NMAE), anomaly precision/recall/F1, and processing times. To read the implementation alongside Sections 4.1–4.6 of the paper, start with the [component mapping](docs/algorithm_overview.md) and [source guide](src/README.md).
+[CauSample.m](src/CauSample.m) is the public runner, and [causample_pipeline.m](src/causample_pipeline.m) coordinates the core algorithm. `tpc_c` is the canonical TPC-C dataset key; the earlier key `oltp` remains a compatibility alias. The runner reports sampling ratio, normalized mean absolute error (NMAE), anomaly precision/recall/F1, and processing times. To read the implementation alongside Sections 4.1–4.6 of the paper, start with the [component mapping](docs/algorithm_overview.md) and [source guide](src/README.md).
 
-The `.csv.gz` files in [dataset/](dataset/README.md) provide compact downloads for the anonymous mirror. `prepare_causample_data` decompresses the labeled CSV when needed and creates the OLTP MAT file without changing the bundled inputs.
+The `.csv.gz` files in [dataset/](dataset/README.md) provide compact downloads for the anonymous mirror. `prepare_causample_data` decompresses `TPC_C_metrics_with_labels.csv.gz` when needed and creates `TPC_C_metrics_with_labels.mat` without changing the bundled inputs.
 
 ## Configuration and data checks
 
-Common parameters and visualization settings are in [src/causample_config.m](src/causample_config.m). Dataset-specific batch/window sizes and overrides are in [src/CauSample.m](src/CauSample.m). Set `visualization.enable = false` for runs without plots.
+Common parameters and visualization settings are in [src/causample_config.m](src/causample_config.m). Dataset keys, file paths, batch/window sizes, and overrides are in [src/causample_dataset_config.m](src/causample_dataset_config.m), shared by the runner and validator. Set `visualization.enable = false` for runs without plots.
 
 ```matlab
-validate_causample('oltp')
+validate_causample('tpc_c')
 validate_causample('online_boutique')
 validate_causample('sock_shop')
 ```
 
-These utilities check input availability and matrix dimensions. [test_causample.m](src/test_causample.m) provides a lightweight smoke check. Neither replaces an experiment through `CauSample`. Full MATLAB experiments were not rerun during this documentation and naming update.
+These utilities check input availability and matrix dimensions. [test_causample.m](src/test_causample.m) provides a lightweight smoke check. Neither replaces an experiment through `CauSample`. Full MATLAB experiments were not rerun during this naming and module refactor.
 
 ## Data sources
 
-The OLTP data were collected using the TPC Benchmark C (TPC-C) workload. Online Boutique and Sock Shop inputs are selected metric traces from the [BARO artifact](https://github.com/phamquiluan/baro). The [dataset inventory](dataset/README.md) records the files and dimensions, and the [data-format guide](docs/data_format.md) explains the labels used by the included evaluator.
+The TPC-C data were collected using the TPC Benchmark C workload. Online Boutique and Sock Shop inputs are selected metric traces from the [BARO artifact](https://github.com/phamquiluan/baro). The [dataset inventory](dataset/README.md) records the files, dimensions, and earlier filenames, and the [data-format guide](docs/data_format.md) explains the labels used by the included evaluator.
 
 ## License and attribution
 

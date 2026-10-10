@@ -1,8 +1,8 @@
 function [W, Omega_Cauchy_large, Omega_Cauchy_small, Cauchy_MEDIANs, Cauchy_MADs, ...
     Cauchy_thresh_SPIKE, Cauchy_thresh_DIP] = ...
-    detect_window_anomalies(W, SPIKE_LIMIT, DIP_LIMIT, Omega_Cauchy_large, Omega_Cauchy_small, ...
+    Anomaly_Detector_Window(W, SPIKE_LIMIT, DIP_LIMIT, Omega_Cauchy_large, Omega_Cauchy_small, ...
     Cauchy_Trans)
-% DETECT_WINDOW_ANOMALIES Identify spikes and dips in a metric window.
+% ANOMALY_DETECTOR_WINDOW Identify spikes and dips in a metric window.
 %   Anomaly Detector (Section 4.1); also used for evaluation labels.
 %   W is a metric-by-time matrix. Return its interpolated normal-data copy,
 %   spike/dip indicators, robust statistics, and per-metric thresholds.
@@ -58,5 +58,4 @@ for j=1:M
         W(j, idx_anomalies) = val;
     end
 end
-
 

@@ -40,13 +40,8 @@ W = [];
 W_idx = [];
 
 %% Low-Rank Sampler: temporal history and rank state (Section 4.2)
-U_W = zeros(T,w_size,M);
-U_W_idx = zeros(M, w_size);
-U_W_basis = zeros(T,w_size,M);
-U_W_basis_idx = zeros(M,w_size);
-ranks = zeros(1,M);
-U_W_union = [];
-U_W_union_idx = [];
+[U_W, U_W_idx, U_W_basis, U_W_basis_idx, ranks, U_W_union, U_W_union_idx] = ...
+    Low_Rank_Sampler('initialize', T, w_size, M);
 
 beta_count = 0;
 incomplete_batch = 0;
@@ -118,63 +113,33 @@ for t = 1:num_batch
     if t<=w_size
         X_t = X_e(:,(t-1)*T+1 : t*T);
         W(:,(t-1)*T+1 : t*T) = X_t;
-        U_W(:,t,:) = X_t';
-        U_W_idx(:,t) = ones(M,1)*t;
-        U_W_union(:,t,:) = X_t';
-        U_W_union_idx(t) = t;
+        [U_W, U_W_idx, U_W_union, U_W_union_idx, U_W_basis, U_W_basis_idx, ranks, r_estimators] = ...
+            Low_Rank_Sampler('train', X_t, t, M, param, U_W, U_W_idx, U_W_union, ...
+            U_W_union_idx, U_W_basis, U_W_basis_idx, ranks, r_estimators);
         X_e_hat(:, (t-1)*T+1 : t*T) = X_t;
         Omega_e(:, (t-1)*T+1 : t*T) = 1;
-        for i = 1:M
-            r_i = ranks(i);
-            U_W_basis_i = U_W_basis(:,1:r_i,i);
-            X_t_i = X_t(i,:)';
-            P_UWbasis_i = U_W_basis_i * pinv(U_W_basis_i);
-            estimator = (norm(X_t_i - P_UWbasis_i * X_t_i)^2) / (norm(X_t_i)^2+eps);
-            r_estimators(i,t) = estimator;
-
-            if estimator > param.yita
-                r_i = r_i + 1;
-                U_W_basis(:, r_i, i) = X_t_i;
-                U_W_basis_idx(i,r_i) = t;
-                ranks(i) = r_i;
-            end
-        end
 
         if t==w_size
             % Sparse Causal Structure Extractor: use original training data.
             X_train = X(:,1:w*T);
-            [IDX_groups, numClusters, eigns,~] = cluster_correlated_metrics(X_train);
-            [B, Stru, Ord, IDX_root, IDX_intermedia] = extract_sparse_causal_structure(IDX_groups, numClusters, X_train);
+            [B, Stru, Ord, IDX_root, IDX_intermedia, IDX_groups, numClusters, eigns] = ...
+                Sparse_Causal_Structure_Extractor(X_train);
 
             % Anomaly Detector: prepare normal data and anomaly events.
-            [W, U_W, Omega_Cauchy_spike_e, Omega_Cauchy_dip_e, Cauchy_MEDIANs, Cauchy_MADs] = detect_training_anomalies(W, U_W, param.SPIKE_LIMIT, param.DIP_LIMIT, Omega_Cauchy_spike_e, Omega_Cauchy_dip_e, Cauchy_Trans);
+            [W, U_W, Omega_Cauchy_spike_e, Omega_Cauchy_dip_e, Cauchy_MEDIANs, Cauchy_MADs] = Anomaly_Detector_Training(W, U_W, param.SPIKE_LIMIT, param.DIP_LIMIT, Omega_Cauchy_spike_e, Omega_Cauchy_dip_e, Cauchy_Trans);
             U_W_union = U_W;
             Omega_Anomalies_e = double(Omega_Cauchy_spike_e | Omega_Cauchy_dip_e);
             Omega_e = Omega_e - Omega_Anomalies_e;
             X_e_hat_normal(:,1:w_size*T) = W;
 
-            [X_train, Omega_Cauchy_spike, Omega_Cauchy_dip, Cauchy_MEDIANs, Cauchy_MADs, ~] = detect_window_anomalies(X_train, param.SPIKE_LIMIT, param.DIP_LIMIT, Omega_Cauchy_spike, Omega_Cauchy_dip, Cauchy_Trans);
+            [X_train, Omega_Cauchy_spike, Omega_Cauchy_dip, Cauchy_MEDIANs, Cauchy_MADs, ~] = Anomaly_Detector_Window(X_train, param.SPIKE_LIMIT, param.DIP_LIMIT, Omega_Cauchy_spike, Omega_Cauchy_dip, Cauchy_Trans);
             Omega(:,1:w*T) = 1;
             Omega_Anomalies = double(Omega_Cauchy_spike | Omega_Cauchy_dip);
 
             % Anomaly Sampler: learn SCS-constrained propagation parameters.
-            [anomaly_mu, anomaly_A, anomaly_beta,S_mu,S_A,S_beta, events, Par] = learn_anomaly_model(Omega_Anomalies, w*T, M, anomaly_max_iter, anomaly_tolerance, Stru);
-            for i = 1:M
-                for j = 1:w*T
-                    % lambda_i(j)
-                    lambda_i_j = anomaly_mu(i);
-                    for m_prime = Par{i}
-                        past_events = events{m_prime}(events{m_prime}<=j);
-                        if ~isempty(past_events)
-                            dt = j-past_events;
-                            contrib = anomaly_A(i, m_prime) * anomaly_beta(i, m_prime) * exp(-anomaly_beta(i, m_prime)*dt);
-                            lambda_i_j = lambda_i_j + sum(contrib);
-                        end
-                    end
-                    Lambda(i,j) = lambda_i_j;
-                end
-                Lambda_normalize(i,1:w*T) = Lambda(i,1:w*T)./max(Lambda(i,1:w*T));
-            end
+            [anomaly_mu, anomaly_A, anomaly_beta,S_mu,S_A,S_beta, events, Par] = Anomaly_Sampler_Training(Omega_Anomalies, w*T, M, anomaly_max_iter, anomaly_tolerance, Stru);
+            [Lambda, Lambda_normalize] = Anomaly_Sampler('history', M, 1:w*T, 1:w*T, ...
+                events, Par, anomaly_mu, anomaly_A, anomaly_beta, Lambda, Lambda_normalize);
 
             if enableVisualization
                 rank_M_svd = rank(X_train');
@@ -239,29 +204,9 @@ for t = 1:num_batch
         W_idx = W_idx(2:end);
         W(:, (size(W,2)+1):(size(W,2)+T) ) = X_t;
         W = W(:, T+1:end);
-        % Remove expired historical columns and update their rank estimates.
-        for i = 1:M
-            temp = length( find(U_W_idx(i,:)~=0) );
-            if temp > 0
-                if idx_oldest == U_W_idx(i,1) %
-                    X_oldest_i = U_W(:,1,i);
-                    U_W(:,1:temp-1,i) = U_W(:,2:temp,i);
-                    U_W(:,temp,i) = 0;
-                    U_W_idx(i,1:temp-1) = U_W_idx(i,2:temp);
-                    U_W_idx(i,temp:w_size) = 0;
-
-                    U_W_i = U_W(:,1:temp-1,i);
-                    P_UW = U_W_i*pinv(U_W_i);
-                    estimator = (norm(X_oldest_i - P_UW*X_oldest_i)^2) / (norm(X_oldest_i)^2+eps);
-                    r_estimators(i,t) = estimator;
-                    if estimator > param.yita
-                        ranks(i) = ranks(i) - 1;
-                    end
-                end
-            end
-        end
-
-        ranks = ranks + 1;
+        [U_W, U_W_idx, ranks, r_estimators] = ...
+            Low_Rank_Sampler('advance', idx_oldest, M, w_size, param, t, ...
+            U_W, U_W_idx, ranks, r_estimators);
         Overhead_cputime_decision(t) = cputime - cputime_decision_start;
 
         Time_sample_t = 0;
@@ -289,19 +234,8 @@ for t = 1:num_batch
             Overhead_cputime_sampling(t) = cputime - cputime_sampling_start;
             %
             cputime_decision_start = cputime;
-            for i = 1:M
-                temp = length(find(U_W_idx(i,:)~=0));
-                U_W_i = U_W(:,1:temp,i);
-                X_t_i = X_t(i,:)';
-                P_UW_i = U_W_i * pinv(U_W_i);
-                estimator = (norm(X_t_i - P_UW_i * X_t_i)^2) / (norm(X_t_i)^2+eps);
-                r_estimators(i,t) = estimator;
-                if estimator > param.yita
-                    ranks(i) = ranks(i) + 1;
-                end
-                U_W(:,temp+1,i) = X_t_i;
-                U_W_idx(i,temp+1) = t;
-            end
+            [U_W, U_W_idx, ranks, r_estimators] = ...
+                Low_Rank_Sampler('observe', X_t, t, M, param, U_W, U_W_idx, ranks, r_estimators);
             Overhead_cputime_decision(t) = Overhead_cputime_decision(t) + (cputime-cputime_decision_start);
             % s1 U_W_Union
             U_W_union(:,size(U_W_union,2)+1,:) = X_t';
@@ -313,7 +247,7 @@ for t = 1:num_batch
             if beta_count == param.beta || t == num_batch
 
                 % Separate recent anomalies and update event/history data.
-                [W, U_W_union, ~, ~, Cauchy_MEDIANs,Cauchy_MADs,events,new_events,Omega_Cauchy] = detect_sampled_anomalies(W, U_W_union, U_W_union_idx, beta_count, param.SPIKE_LIMIT, param.DIP_LIMIT, Cauchy_MEDIANs, Cauchy_MADs, Cauchy_Trans, T,t,w_size,w, events,new_events, Omega_e,Omega_Anomalies_e,X_e_hat, W_idx);
+                [W, U_W_union, ~, ~, Cauchy_MEDIANs,Cauchy_MADs,events,new_events,Omega_Cauchy] = Anomaly_Detector_Sampled(W, U_W_union, U_W_union_idx, beta_count, param.SPIKE_LIMIT, param.DIP_LIMIT, Cauchy_MEDIANs, Cauchy_MADs, Cauchy_Trans, T,t,w_size,w, events,new_events, Omega_e,Omega_Anomalies_e,X_e_hat, W_idx);
 
                 X_e_hat_normal(:,(t-beta_count)*T:t*T) = W(:,(length(W_idx)-beta_count)*T:length(W_idx)*T);
 
@@ -328,71 +262,10 @@ for t = 1:num_batch
 
                 % s2
                 cputime_reconstruction_start = cputime;
-                IDX_unrecover = find(r_iscomplete(:,incomplete_batch)==0)';
-                if ~isempty(IDX_unrecover)
-                    IDX_root_unrecover = [];
-                    for ic = 1:numClusters
-                        temp = length(find(IDX_root(ic,:)~=0));
-                        IDX_root_ic = IDX_root(ic, 1:temp);
-                        IDX_root_unrecover = [IDX_root_unrecover intersect(IDX_unrecover, IDX_root_ic)];
-                    end
-                    IDX_other_unrecover = setdiff(IDX_unrecover, IDX_root_unrecover);
-
-                    for iru = IDX_root_unrecover
-                        %
-                        Omega_iru = Omega_e(iru, (incomplete_batch-1)*T+1:incomplete_batch*T);
-                        Omega_iru_idx = find(Omega_iru==1);
-                        Omega_iru_anomalies = Omega_Anomalies_e(iru, (incomplete_batch-1)*T+1:incomplete_batch*T);
-                        Omega_iru_anomalies_idx = find(Omega_iru_anomalies==1);
-
-                        X_e_hat_iru = X_e_hat(iru, (incomplete_batch-1)*T+1:incomplete_batch*T)';
-                        X_e_hat_iru_omega = X_e_hat_iru(Omega_iru_idx);
-                        X_e_hat_iru_omega_anomalies = X_e_hat_iru(Omega_iru_anomalies_idx);
-
-                        enhanced_columns = augment_temporal_history(U_W_union(:,end-beta_count+1:end,iru), U_W_union_idx(end-beta_count+1:end)); %enhanced subspace
-                        U_W_union_iru = [U_W_union(:,1:end-beta_count,iru) enhanced_columns];
-                        X_e_hat_iru = U_W_union_iru*pinv(U_W_union_iru(Omega_iru_idx,:))*X_e_hat_iru_omega;
-
-                        X_e_hat_iru(Omega_iru_idx,1) = X_e_hat_iru_omega;
-                        X_e_hat_normal(iru, (incomplete_batch-1)*T+1:incomplete_batch*T) = X_e_hat_iru';
-                        X_e_hat_iru(Omega_iru_anomalies_idx,1) = X_e_hat_iru_omega_anomalies;
-                        X_e_hat(iru, (incomplete_batch-1)*T+1:incomplete_batch*T) = X_e_hat_iru';
-
-                        r_iscomplete(iru, incomplete_batch) = 1;
-                    end
-                    for iou = IDX_other_unrecover
-                        IDX_j_parent = find(B(iou,:)~=0);
-                        U_W_j_parent = X_e_hat(IDX_j_parent, (incomplete_batch-1)*T+1:incomplete_batch*T)';
-
-                        for j_par = IDX_j_parent
-                            temp = length(U_W_union_idx);
-                            U_W_j_par = U_W_union(:,1:temp,j_par);
-                            U_W_j_parent = [U_W_j_parent U_W_j_par];
-                        end
-                        U_W_union_iou = U_W_union(:,:,iou);
-
-                        Omega_iou = Omega_e(iou, (incomplete_batch-1)*T+1:incomplete_batch*T);
-                        Omega_iou_idx = find(Omega_iou==1);
-                        Omega_iou_anomalies = Omega_Anomalies_e(iou, (incomplete_batch-1)*T+1:incomplete_batch*T);
-                        Omega_iou_anomalies_idx = find(Omega_iou_anomalies==1);
-
-                        X_e_hat_iou = X_e_hat(iou, (incomplete_batch-1)*T+1:incomplete_batch*T)';
-                        X_e_hat_iou_omega = X_e_hat_iou(Omega_iou_idx);
-                        X_e_hat_iou_omega_anomalies = X_e_hat_iou(Omega_iou_anomalies_idx);
-
-                        U_W_j_parent_omega = U_W_j_parent(Omega_iou_idx,:);
-                        U_W_union_iou_omega = U_W_union_iou(Omega_iou_idx,:);
-
-                        [alpha_cau, alpha_his] = fit_reconstruction_coefficients(X_e_hat_iou_omega, U_W_j_parent_omega, U_W_union_iou_omega, param.als_max_iter, param.als_tol);
-                        X_e_hat_iou = U_W_j_parent*alpha_cau + U_W_union_iou*alpha_his;
-                        X_e_hat_iou(Omega_iou_idx) = X_e_hat_iou_omega;
-                        X_e_hat_normal(iou, (incomplete_batch-1)*T+1:incomplete_batch*T) = X_e_hat_iou';
-                        X_e_hat_iou(Omega_iou_anomalies_idx) = X_e_hat_iou_omega_anomalies;
-                        X_e_hat(iou, (incomplete_batch-1)*T+1:incomplete_batch*T) = X_e_hat_iou';
-
-                        r_iscomplete(iou, incomplete_batch) = 1;
-                    end
-                end
+                [X_e_hat, X_e_hat_normal, r_iscomplete] = ...
+                    Fine_Grained_Reconstructor('delayed', r_iscomplete, incomplete_batch, ...
+                    numClusters, IDX_root, Omega_e, Omega_Anomalies_e, X_e_hat, ...
+                    X_e_hat_normal, U_W_union, U_W_union_idx, beta_count, B, param, T);
                 Overhead_cputime_reconstruction(t) = cputime - cputime_reconstruction_start;
                 % s4
                 if all(r_iscomplete(:, incomplete_batch))
@@ -401,24 +274,11 @@ for t = 1:num_batch
 
                 % Model Updater: incorporate newly sampled anomalies (Section 4.6).
                 cputime_modelupdate_start = cputime;
-                [anomaly_mu,anomaly_A,anomaly_beta, S_mu,S_A,S_beta] = update_anomaly_model(anomaly_mu,anomaly_A,anomaly_beta, events, new_events, w,T, M, anomaly_max_iter, anomaly_tolerance, S_mu,S_A,S_beta, Par, W_idx);
+                [anomaly_mu,anomaly_A,anomaly_beta, S_mu,S_A,S_beta] = Model_Updater(anomaly_mu,anomaly_A,anomaly_beta, events, new_events, w,T, M, anomaly_max_iter, anomaly_tolerance, S_mu,S_A,S_beta, Par, W_idx);
                 Overhead_cputime_modelupdate(t) = cputime - cputime_modelupdate_start;
-                for i = 1:M
-                    for j = (t-w_size+w-beta_count)*T+1:(t-w_size+w)*T
-                        % lambda_i(j)
-                        lambda_i_j = anomaly_mu(i);
-                        for m_prime = Par{i}
-                            past_events = events{m_prime}(events{m_prime}<=j);
-                            if ~isempty(past_events)
-                                dt = j-past_events;
-                                contrib = anomaly_A(i, m_prime) * anomaly_beta(i, m_prime) * exp(-anomaly_beta(i, m_prime)*dt);
-                                lambda_i_j = lambda_i_j + sum(contrib);
-                            end
-                        end
-                        Lambda(i,j) = lambda_i_j;
-                    end
-                    Lambda_normalize(i,(t-w_size+w-beta_count)*T+1:(t-w_size+w)*T) = Lambda(i,(t-w_size+w-beta_count)*T+1:(t-w_size+w)*T)./max(Lambda(i,:));
-                end
+                [Lambda, Lambda_normalize] = Anomaly_Sampler('history', M, ...
+                    (t-w_size+w-beta_count)*T+1:(t-w_size+w)*T, [], events, Par, ...
+                    anomaly_mu, anomaly_A, anomaly_beta, Lambda, Lambda_normalize);
 
                 incomplete_batch = 0;
                 beta_count = 0;
@@ -443,19 +303,11 @@ for t = 1:num_batch
                 for j = 1:size(B_i,1)
                     j_ord_idx = Ord_i(j);
 
-                    if ismember(j_ord_idx, IDX_root_i)
-                        % Root metric: use its temporal-rank estimate.
-                        r_j = ranks(j_ord_idx);
-                        numSamples_j = max(param.theta_r*r_j*log(r_j), 1);
-                    else
-                        % Child metric: use its local causal rank (parent count).
-                        j_parent_idx = Ord_i(B_i(j,:) ~=0);
-                        r_j = length(j_parent_idx);
-                        numSamples_j = max(param.theta_c*r_j*log(r_j), 1);
-                    end
+                    numSamples_j = Low_Rank_Sampler('budget', j_ord_idx, IDX_root_i, ...
+                        ranks, Ord_i, B_i, j, param);
                     % Composite Sampler: combine base collection with anomaly-guided
                     % candidates; detected anomalies update the shared event history.
-                    [Omega_t_j_ord_idx, Omega_t_j_ord_idx_r,Omega_t_j_ord_idx_L, Anomalies_t_omega_j_ord_idx, Omega_Anomalies_e, events, new_events, Lambda,Lambda_normalize] = composite_sampler(j_ord_idx, numSamples_j, T, param, X_t(j_ord_idx, :), X_e_hat, Omega_e, Omega_Anomalies_e, events,new_events, Par, Cauchy_MEDIANs,Cauchy_MADs,Cauchy_Trans, W_idx, w_size,w, anomaly_mu,anomaly_A,anomaly_beta, Lambda,Lambda_normalize);
+                    [Omega_t_j_ord_idx, Omega_t_j_ord_idx_r,Omega_t_j_ord_idx_L, Anomalies_t_omega_j_ord_idx, Omega_Anomalies_e, events, new_events, Lambda,Lambda_normalize] = Composite_Sampler(j_ord_idx, numSamples_j, T, param, X_t(j_ord_idx, :), X_e_hat, Omega_e, Omega_Anomalies_e, events,new_events, Par, Cauchy_MEDIANs,Cauchy_MADs,Cauchy_Trans, W_idx, w_size,w, anomaly_mu,anomaly_A,anomaly_beta, Lambda,Lambda_normalize);
 
                     Omega_t(j_ord_idx, :) = Omega_t_j_ord_idx;
                     Omega_t_r(j_ord_idx, :) = Omega_t_j_ord_idx_r;
@@ -468,104 +320,10 @@ for t = 1:num_batch
                 Time_sample_t = Time_sample_t + toc(time_sample);
                 % Fine-Grained Reconstructor: recover roots from temporal history.
                 cputime_reconstruction_start = cputime;
-                for j = IDX_root_i
-                    temp = length(find(U_W_idx(j,:)~=0));
-                    idx_t_omega = find(Omega_t(j,:)~=0);
-                    idx_t_omega_anomalies = find(Anomalies_t_omega(j,:)==1); %----------------------
-                    %idx_t_omega = unique([idx_t_omega, idx_t_omega_anomalies]);
-                    X_t_omega_j = X_t_omega(j, idx_t_omega)';
-                    if temp>0
-                        U_W_j = U_W(:,1:temp,j);
-                        P_UWj_omega = U_W_j(idx_t_omega,:) * pinv(U_W_j(idx_t_omega,:));
-                        estimator_j = (norm(X_t_omega_j - P_UWj_omega*X_t_omega_j)^2) / (norm(X_t_omega_j)^2+eps);
-                    else
-                        estimator_j = 1;
-                    end
-                    r_estimators(j,t) = estimator_j;
-
-                    if estimator_j < param.yita
-                        % Reconstruct a root using its historical temporal representation.
-                        X_e_hat_t_j = U_W_j*pinv(U_W_j(idx_t_omega,:))*X_t_omega_j;
-                        X_e_hat_t(j,:) = X_e_hat_t_j';
-                        X_e_hat_t(j, idx_t_omega) = X_t_omega_j';
-                        X_e_hat_t_normal(j,:) = X_e_hat_t(j,:);
-                        X_e_hat_t(j, idx_t_omega_anomalies) = X_t(j, idx_t_omega_anomalies);
-
-                        r_iscomplete(j,t) = 1;
-                        ranks(j) = ranks(j) - 1;
-                    else
-                        r_iscomplete(j,t) = 0;
-
-                        X_e_hat_t(j, idx_t_omega) = X_t_omega_j';
-                        X_e_hat_t_normal(j, idx_t_omega) = X_t_omega_j';
-                        X_e_hat_t(j, idx_t_omega_anomalies) = X_t(j, idx_t_omega_anomalies);
-                        disp(['Root reconstruction unavailable for metric ', num2str(j)])
-                    end
-                end
-
-                % Reconstruct children using causal and temporal representations.
-                for j = IDX_other_i
-
-                    IDX_j_parent = find(B(j,:)~=0);
-                    iscomplete_j = 1;
-                    if ismember(0, r_iscomplete(IDX_j_parent,t))
-                        iscomplete_j = 0;
-                    else
-                        U_W_j_parent = X_e_hat_t(IDX_j_parent,:)';
-                        %U_W_j_parent = [];
-                        for j_par = IDX_j_parent
-                            temp = length(find(U_W_idx(j_par,:)~=0));
-                            U_W_j_par = U_W(:,1:temp,j_par);
-                            U_W_j_parent = [U_W_j_parent U_W_j_par];
-                        end
-                        temp = length(find(U_W_idx(j,:)~=0));
-                        if temp>0
-                            U_W_j = U_W(:,1:temp,j);
-                        else
-                            iscomplete_j = 0;
-                        end
-                    end
-                    idx_t_omega = find(Omega_t(j,:)==1);
-                    idx_t_omega_anomalies = find(Anomalies_t_omega(j,:)==1); %--------------------------
-                    X_t_omega_j = X_t_omega(j,idx_t_omega)';
-
-                    if iscomplete_j
-                        U_W_j_parent = [U_W_j_parent U_W_j];
-                        U_W_j_parent_omega = U_W_j_parent(idx_t_omega, :);
-                        P_UWjparent_omega = U_W_j_parent_omega * pinv(U_W_j_parent_omega);
-                        estimator_j = (norm(X_t_omega_j  - P_UWjparent_omega*X_t_omega_j)^2) / (norm(X_t_omega_j)^2+eps);
-                    else
-                        estimator_j = 1;
-                    end
-                    r_estimators(j,t) = estimator_j;
-                    if estimator_j < param.yita
-
-                        X_e_hat_j = U_W_j_parent * pinv(U_W_j_parent_omega) * X_t_omega_j;
-                        X_e_hat_t(j, :) = X_e_hat_j';
-                        X_e_hat_t(j, idx_t_omega) = X_t_omega(j,idx_t_omega);
-                        X_e_hat_t_normal(j,:) = X_e_hat_t(j,:);
-                        X_e_hat_t(j, idx_t_omega_anomalies) = X_t(j,idx_t_omega_anomalies);
-
-                        r_iscomplete(j,t) = 1;
-                    else
-                        if iscomplete_j
-                            [alpha_cau, alpha_his] = fit_reconstruction_coefficients(X_t_omega_j, U_W_j_parent_omega, U_W_j(idx_t_omega,:), param.als_max_iter, param.als_tol);
-                            X_e_hat_j = U_W_j_parent*alpha_cau + U_W_j*alpha_his;
-                            X_e_hat_t(j,:) = X_e_hat_j';
-                            X_e_hat_t(j, idx_t_omega) = X_t_omega(j,idx_t_omega);
-                            X_e_hat_t_normal(j,:) = X_e_hat_t(j,:);
-                            X_e_hat_t(j, idx_t_omega_anomalies) = X_t(j,idx_t_omega_anomalies);
-                            r_iscomplete(j,t) = 1;
-                        else
-                            r_iscomplete(j,t) = 0;
-                            X_e_hat_t(j, idx_t_omega) = X_t_omega_j';
-                            X_e_hat_t_normal(j, idx_t_omega) = X_t_omega_j';
-                            X_e_hat_t(j, idx_t_omega_anomalies) = X_t(j, idx_t_omega_anomalies);
-                            disp(['Child reconstruction unavailable for metric ', num2str(j)])
-                        end
-                    end
-                    ranks(j) = ranks(j) - 1;
-                end
+                [X_e_hat_t, X_e_hat_t_normal, r_estimators, r_iscomplete, ranks] = ...
+                    Fine_Grained_Reconstructor('batch', IDX_root_i, IDX_other_i, U_W, ...
+                    U_W_idx, Omega_t, Anomalies_t_omega, X_t_omega, X_t, X_e_hat_t, ...
+                    X_e_hat_t_normal, r_estimators, r_iscomplete, ranks, B, param, t);
                 cputime_reconstruction_i = cputime - cputime_reconstruction_start;
                 Overhead_cputime_reconstruction(t) = Overhead_cputime_reconstruction(t) + cputime_reconstruction_i;
 
@@ -584,7 +342,7 @@ for t = 1:num_batch
 
             % Model Updater: incorporate newly sampled anomalies (Section 4.6).
             cputime_modelupdate_start = cputime;
-            [anomaly_mu,anomaly_A,anomaly_beta, S_mu,S_A,S_beta] = update_anomaly_model(anomaly_mu,anomaly_A,anomaly_beta, events, new_events, w,T, M, anomaly_max_iter, anomaly_tolerance, S_mu,S_A,S_beta, Par, W_idx);
+            [anomaly_mu,anomaly_A,anomaly_beta, S_mu,S_A,S_beta] = Model_Updater(anomaly_mu,anomaly_A,anomaly_beta, events, new_events, w,T, M, anomaly_max_iter, anomaly_tolerance, S_mu,S_A,S_beta, Par, W_idx);
             Overhead_cputime_modelupdate(t) = cputime - cputime_modelupdate_start;
 
             X_e_hat_normal(:, (t-1)*T+1 : t*T) = X_e_hat_t_normal;

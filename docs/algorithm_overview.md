@@ -8,7 +8,7 @@ The **Low-Rank Sampler** uses normal metric variations to determine base samplin
 
 The **Anomaly Sampler** learns anomaly propagation through self and parent excitation using an SCS-constrained multivariate Hawkes process. Its predicted anomaly probabilities guide additional sampling around likely anomalies. The Composite Sampler combines these observations with the base samples, and newly collected anomalies inform subsequent predictions.
 
-SCS extraction uses the original, fully collected training data. The Anomaly Detector, described within Section 4.1, then prepares normal data and anomaly events for the two sampling paths. After collection, the Fine-Grained Reconstructor combines temporal and causal information and restores sampled values in the final output. The Model Updater incorporates newly collected events and refreshes the representations used by later batches.
+SCS extraction uses the original, fully collected training data. The Anomaly Detector, described within Section 4.1, then prepares normal data and anomaly events for the two sampling paths. After collection, the Fine-Grained Reconstructor combines temporal and causal information and restores sampled values in the final output. The Model Updater incorporates newly collected anomalies into the propagation model; the Low-Rank Sampler maintains temporal history and rank estimates for subsequent batches.
 
 ## Components and paper sections
 
@@ -16,13 +16,19 @@ All source files below are in `src/`.
 
 | Component | Paper section | Main source files |
 | --- | --- | --- |
-| Sparse Causal Structure Extractor | 4.1 | [cluster_correlated_metrics.m](../src/cluster_correlated_metrics.m) groups metrics; [extract_sparse_causal_structure.m](../src/extract_sparse_causal_structure.m), [discover_causal_dependencies.m](../src/discover_causal_dependencies.m), and [refine_causal_structure.m](../src/refine_causal_structure.m) (auxiliary) infer and refine their dependencies. |
-| Anomaly Detector | Within 4.1 | [detect_training_anomalies.m](../src/detect_training_anomalies.m) prepares enhanced training data; [detect_window_anomalies.m](../src/detect_window_anomalies.m) detects anomalies in a window; [detect_sampled_anomalies.m](../src/detect_sampled_anomalies.m) handles collected observations. |
-| Low-Rank Sampler | 4.2 | Frequency calculation and temporal-rank bookkeeping in [causample_pipeline.m](../src/causample_pipeline.m) |
-| Anomaly Sampler | 4.3 | [learn_anomaly_model.m](../src/learn_anomaly_model.m) |
-| Composite Sampler | 4.4 | [composite_sampler.m](../src/composite_sampler.m), [generate_base_schedule.m](../src/generate_base_schedule.m) |
-| Fine-Grained Reconstructor | 4.5 | Reconstruction blocks in [causample_pipeline.m](../src/causample_pipeline.m), [fit_reconstruction_coefficients.m](../src/fit_reconstruction_coefficients.m), [augment_temporal_history.m](../src/augment_temporal_history.m) |
-| Model Updater | 4.6 | Update blocks in [causample_pipeline.m](../src/causample_pipeline.m) refresh temporal history for subsequent reconstruction; [update_anomaly_model.m](../src/update_anomaly_model.m) updates anomaly propagation parameters. |
+| Sparse Causal Structure Extractor | 4.1 | [Sparse_Causal_Structure_Extractor.m](../src/Sparse_Causal_Structure_Extractor.m) coordinates metric grouping in [cluster_correlated_metrics.m](../src/cluster_correlated_metrics.m) and structure extraction in [extract_sparse_causal_structure.m](../src/extract_sparse_causal_structure.m), which calls [discover_causal_dependencies.m](../src/discover_causal_dependencies.m). |
+| Anomaly Detector | Within 4.1 | [Anomaly_Detector_Training.m](../src/Anomaly_Detector_Training.m) prepares enhanced training data; [Anomaly_Detector_Window.m](../src/Anomaly_Detector_Window.m) detects anomalies in an original data window; [Anomaly_Detector_Sampled.m](../src/Anomaly_Detector_Sampled.m) handles collected observations. These remain three separate functions. |
+| Low-Rank Sampler | 4.2 | [Low_Rank_Sampler.m](../src/Low_Rank_Sampler.m) maintains temporal histories and rank estimates and calculates base sample budgets. |
+| Anomaly Sampler | 4.3 | [Anomaly_Sampler_Training.m](../src/Anomaly_Sampler_Training.m) learns propagation parameters offline; [Anomaly_Sampler.m](../src/Anomaly_Sampler.m) evaluates anomaly occurrence rates and normalized probabilities at candidate times. |
+| Composite Sampler | 4.4 | [Composite_Sampler.m](../src/Composite_Sampler.m) combines base and anomaly samples, using [generate_base_schedule.m](../src/generate_base_schedule.m) for the base schedule. |
+| Fine-Grained Reconstructor | 4.5 | [Fine_Grained_Reconstructor.m](../src/Fine_Grained_Reconstructor.m) handles current-batch and delayed reconstruction, using [fit_reconstruction_coefficients.m](../src/fit_reconstruction_coefficients.m) and [augment_temporal_history.m](../src/augment_temporal_history.m). |
+| Model Updater | 4.6 | [Model_Updater.m](../src/Model_Updater.m) updates anomaly propagation parameters. [causample_pipeline.m](../src/causample_pipeline.m) coordinates this with temporal-history maintenance in [Low_Rank_Sampler.m](../src/Low_Rank_Sampler.m) for later batches. |
+
+The pipeline retains orchestration, batch state, timings, and visualization.
+Retained legacy auxiliaries, including
+`refine_causal_structure.m`, are outside the main path; the
+[source guide](../src/README.md#helpers-and-attribution) identifies them and
+preserves their attributions.
 
 ## Data and notation
 
@@ -41,8 +47,8 @@ All source files below are in `src/`.
 
 ## Entry points and evaluation
 
-[CauSample.m](../src/CauSample.m) selects a dataset, loads [causample_config.m](../src/causample_config.m), invokes preprocessing and the core algorithm, and reports sampling ratio, NMAE, anomaly precision/recall/F1, and timing measurements. These evaluation categories are described in Section 5.1.
+[CauSample.m](../src/CauSample.m) loads shared parameters from [causample_config.m](../src/causample_config.m), applies dataset settings through [causample_dataset_config.m](../src/causample_dataset_config.m), invokes preprocessing and the core algorithm, and reports sampling ratio, NMAE, anomaly precision/recall/F1, and timing measurements. These evaluation categories are described in Section 5.1.
 
-[prepare_causample_data.m](../src/prepare_causample_data.m) prepares the bundled OLTP input with [import_dataset_from_csv.m](../src/import_dataset_from_csv.m). [preprocess_metric_data.m](../src/preprocess_metric_data.m) prepares metric matrices, labels, normalization information, and enhanced training segments. [evaluate_anomaly_preservation.m](../src/evaluate_anomaly_preservation.m) compares anomalies in the reconstructed output with the per-metric Cauchy labels. [validate_causample.m](../src/validate_causample.m) checks dataset availability and dimensions.
+[prepare_causample_data.m](../src/prepare_causample_data.m) prepares the bundled TPC-C input with [import_dataset_from_csv.m](../src/import_dataset_from_csv.m). [preprocess_metric_data.m](../src/preprocess_metric_data.m) prepares metric matrices, labels, normalization information, and enhanced training segments. [evaluate_anomaly_preservation.m](../src/evaluate_anomaly_preservation.m) compares anomalies in the reconstructed output with the per-metric Cauchy labels. [validate_causample.m](../src/validate_causample.m) shares the dataset configuration with the runner and checks input availability and dimensions.
 
 See the [README](../README.md) for usage, the [data format guide](data_format.md) for input requirements and label protocol, and the [source guide](../src/README.md) for a suggested reading order and helper attributions.

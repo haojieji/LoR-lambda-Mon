@@ -1,6 +1,6 @@
 function [Omega_t_m, Omega_t_m_r, Omega_t_m_L, Omega_t_m_Anomalies, Omega_Anomalies, events, ...
     new_events, Lambda, Lambda_normalize] = ...
-    composite_sampler(m, num_sample_f, T, param, X_t_m, X, Omega, Omega_Anomalies, events, ...
+    Composite_Sampler(m, num_sample_f, T, param, X_t_m, X, Omega, Omega_Anomalies, events, ...
     new_events, Par, Cauchy_MEDIANs, Cauchy_MADs, Cauchy_Trans, W_idx, w_size, w, anomaly_mu, ...
     anomaly_A, anomaly_beta, Lambda, Lambda_normalize)
 % COMPOSITE_SAMPLER Collect base and anomaly-guided samples for one metric.
@@ -8,8 +8,10 @@ function [Omega_t_m, Omega_t_m_r, Omega_t_m_L, Omega_t_m_Anomalies, Omega_Anomal
 %   num_sample_f specifies the base sample budget for the length-T segment
 %   X_t_m. Build an equal-interval schedule, evaluate anomaly-guided candidate
 %   times, and update events when a sampled value is anomalous.
-%   Lambda stores occurrence rates; Lambda_normalize stores normalized
-%   anomaly probabilities. The detector uses the supplied robust statistics.
+%   Anomaly_Sampler computes occurrence rates Lambda and normalized anomaly
+%   probabilities Lambda_normalize. The detector uses the supplied robust
+%   statistics; candidate timing, random acceptance, and event updates remain
+%   in this component.
 %
 %   Output sampling matrices distinguish retained normal values (Omega_t_m),
 %   base samples (_r), additional samples (_L), and sampled anomalies
@@ -58,20 +60,9 @@ for i = idx_Omega_t_m
 
     % Predict candidate times before the next base sample.
     % Compute the current anomaly occurrence rate and its normalization.
-    lambda_curt = anomaly_mu(m);
-    for m_prime = Par{m}
-        past_events = events{m_prime}(events{m_prime} <= ti-w_size*T+w*T);
-        if ~isempty(past_events)
-            dt = ti - past_events;
-            contrib = anomaly_A(m, m_prime) * anomaly_beta(m, m_prime) * exp(-anomaly_beta(m, m_prime) * dt);
-            G(m, m_prime) = sum(contrib);
-            lambda_curt = lambda_curt + G(m, m_prime);
-        end
-    end
-    lambda_curt = max(0,lambda_curt);
-    Lambda(m,ti-w_size*T+w*T) = lambda_curt;
-    lambda_max = max(Lambda(m,range_w_lambda));
-    Lambda_normalize(m, ti-w_size*T+w*T) = lambda_curt/max(eps, max(Lambda(m,:)));
+    [lambda_curt, lambda_max, G, Lambda, Lambda_normalize] = ...
+        Anomaly_Sampler('initial', m, ti, T, w_size, w, events, Par, ...
+        anomaly_mu, anomaly_A, anomaly_beta, G, Lambda, Lambda_normalize, range_w_lambda);
 
     j = i;
     tj = W_idx(w_size-1)*T+j;
@@ -86,22 +77,9 @@ for i = idx_Omega_t_m
             break;
         end
         % Decay the accumulated excitation to this candidate time.
-        lambda_candidate = anomaly_mu(m);
-        for m_prime = Par{m}
-            lambda_candidate = lambda_candidate + G(m,m_prime) * exp(-anomaly_beta(m, m_prime) * interval_Y);
-        end
-        % Add contributions from newly available parent/self anomalies.
-        for m_prime = Par{m}
-            add_events = events{m_prime}(events{m_prime}<=tj-w_size*T+w*T & events{m_prime}>tj-w_size*T+w*T-interval_Y);
-            if ~isempty(add_events)
-                dt = tj-w_size*T+w*T - add_events;
-                contrib = anomaly_A(m, m_prime)*anomaly_beta(m, m_prime)*exp(-anomaly_beta(m, m_prime).*dt);
-                G(m, m_prime) = G(m, m_prime)+ sum(contrib);
-                lambda_candidate = lambda_candidate + sum(contrib);
-            end
-        end
-        Lambda(m,tj-w_size*T+w*T) = lambda_candidate;
-        Lambda_normalize(m, tj-w_size*T+w*T) = Lambda(m,tj-w_size*T+w*T)/max(eps,max(Lambda(m, :)));
+        [lambda_candidate, G, Lambda, Lambda_normalize] = ...
+            Anomaly_Sampler('candidate', m, tj, interval_Y, T, w_size, w, ...
+            events, Par, anomaly_mu, anomaly_A, anomaly_beta, G, Lambda, Lambda_normalize);
         % Accept a candidate according to its normalized anomaly probability.
         if lambda_candidate>0 && (randi([0,9])*0.1) < lambda_candidate/max(Lambda(m,:))
             Omega_t_m(j) = 1;
@@ -119,12 +97,9 @@ for i = idx_Omega_t_m
                 Omega_t_m_L(j) = 0;
 
                 % Add self-excitation from the newly detected anomaly.
-                new_contrib = anomaly_A(m,m)*anomaly_beta(m,m);
-                G(m,m) = G(m,m) + new_contrib;
-                lambda_candidate = lambda_candidate + new_contrib;
-
-                Lambda(m,tj-w_size*T+w*T) = lambda_candidate;
-                Lambda_normalize(m, tj-w_size*T+w*T) = Lambda(m,tj-w_size*T+w*T)/max(eps,max(Lambda(m, :)));
+                [lambda_candidate, G, Lambda, Lambda_normalize] = ...
+                    Anomaly_Sampler('self', m, tj, T, w_size, w, anomaly_A, ...
+                    anomaly_beta, lambda_candidate, G, Lambda, Lambda_normalize);
             end
         end
         lambda_curt = lambda_candidate;

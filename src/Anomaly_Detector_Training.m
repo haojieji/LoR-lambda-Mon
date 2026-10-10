@@ -1,7 +1,7 @@
 function [W, U_W, Omega_Cauchy_large, Omega_Cauchy_small, Cauchy_MEDIANs, Cauchy_MADs] = ...
-    detect_training_anomalies(W, U_W, SPIKE_LIMIT, DIP_LIMIT, Omega_Cauchy_large, ...
+    Anomaly_Detector_Training(W, U_W, SPIKE_LIMIT, DIP_LIMIT, Omega_Cauchy_large, ...
     Omega_Cauchy_small, Cauchy_Trans)
-% DETECT_TRAINING_ANOMALIES Separate anomalies from training representations.
+% ANOMALY_DETECTOR_TRAINING Separate anomalies from training representations.
 %   Anomaly Detector (Section 4.1).
 %   Apply the robust Cauchy detector to each row of W, return spike/dip
 %   indicators and detector statistics, and linearly interpolate detected
@@ -52,5 +52,4 @@ for j=1:M
         U_W(:,:,j) = U_W_j;
     end
 end
-
 

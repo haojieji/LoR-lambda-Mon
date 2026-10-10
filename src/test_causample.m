@@ -3,6 +3,7 @@ function test_causample(datasetName)
 %
 % Usage
 %   test_causample
+%   test_causample('tpc_c')
 %   test_causample('online_boutique')
 %   test_causample('sock_shop')
 %
@@ -10,7 +11,7 @@ function test_causample(datasetName)
 % validate_causample. Run CauSample for the full sampling experiment.
 
 if nargin < 1 || isempty(datasetName)
-    datasetName = 'oltp';
+    datasetName = 'tpc_c';
 end
 
 fprintf('=== CauSample smoke tests ===\n');
@@ -18,9 +19,15 @@ srcDir = fileparts(mfilename('fullpath'));
 addpath(srcDir);
 
 fprintf('\n1. Checking configuration and required files...\n');
-requiredFiles = {'causample_config.m', 'causample_pipeline.m', ...
+requiredFiles = {'causample_config.m', 'causample_dataset_config.m', ...
+    'causample_pipeline.m', ...
     'CauSample.m', 'import_dataset_from_csv.m', 'prepare_causample_data.m', ...
-    'preprocess_metric_data.m', 'validate_causample.m'};
+    'preprocess_metric_data.m', 'validate_causample.m', ...
+    'Sparse_Causal_Structure_Extractor.m', 'Low_Rank_Sampler.m', ...
+    'Anomaly_Sampler.m', 'Anomaly_Sampler_Training.m', ...
+    'Composite_Sampler.m', 'Fine_Grained_Reconstructor.m', 'Model_Updater.m', ...
+    'Anomaly_Detector_Training.m', 'Anomaly_Detector_Window.m', ...
+    'Anomaly_Detector_Sampled.m'};
 for iFile = 1:numel(requiredFiles)
     assert(exist(fullfile(srcDir, requiredFiles{iFile}), 'file') == 2, ...
         'Required source file is missing: %s', requiredFiles{iFile});

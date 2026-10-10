@@ -1,7 +1,7 @@
 % preprocess_metric_data.m
 % Convert the loaded dataset into the matrices expected by CauSample.
 %
-% Required input variables (usually loaded from the OLTP MAT dataset):
+% Required input variables (usually loaded from the TPC-C MAT dataset):
 %   dataMatrix  - time-by-metric numeric matrix
 %   columnNames - metric names, or the original CSV header including timestamp
 %
@@ -90,7 +90,7 @@ Omega_Cauchy_small = zeros(size(X));
 Cauchy_Trans = @(x, m) (x >= m) .* x + ...
                        (x < m) .* ((2*m/pi) .* tan((pi*(x - m)) ./ (2*m + eps)) + m);
 [~, Omega_Cauchy_large, Omega_Cauchy_small] = ...
-    detect_window_anomalies(X, SPIKE_LIMIT, DIP_LIMIT, ...
+    Anomaly_Detector_Window(X, SPIKE_LIMIT, DIP_LIMIT, ...
     Omega_Cauchy_large, Omega_Cauchy_small, Cauchy_Trans);
 Labels_anomalies_X = double(Omega_Cauchy_large | Omega_Cauchy_small);
 

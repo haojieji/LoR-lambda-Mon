@@ -4,11 +4,11 @@ function outputPath = import_dataset_from_csv(csvPath, outputPath, datasetType)
 % Usage
 %   cd src
 %   import_dataset_from_csv
-%   import_dataset_from_csv('../dataset/combined_metrics_510_608_with_labels.csv')
+%   import_dataset_from_csv('../dataset/TPC_C_metrics_with_labels.csv')
 %   import_dataset_from_csv('path/to/simple_data.csv', ...
 %       '../dataset/BARO_OB_w7T50.mat', 'baro')
 %
-% The default OLTP mode reads [timestamp, metrics..., label1, label2] and
+% The default TPC-C mode reads [timestamp, metrics..., label1, label2] and
 % saves a raw MAT file.  BARO mode reads [timestamp, metrics...] and saves a
 % preprocessed MAT file that can be run directly with CauSample.
 
@@ -16,15 +16,16 @@ srcDir = fileparts(mfilename('fullpath'));
 run(fullfile(srcDir, 'causample_config.m'));
 
 if nargin < 3 || isempty(datasetType)
-    datasetType = 'oltp';
+    datasetType = 'tpc_c';
 end
 datasetType = lower(strtrim(char(datasetType)));
+defaultDataset = causample_dataset_config('tpc_c');
 
 if nargin < 1 || isempty(csvPath)
-    csvPath = '../dataset/combined_metrics_510_608_with_labels.csv';
+    csvPath = defaultDataset.csv_path;
 end
 if nargin < 2 || isempty(outputPath)
-    outputPath = '../dataset/mysql_510_608_withLabels.mat';
+    outputPath = defaultDataset.path;
 end
 
 csvPath = resolvePath(srcDir, csvPath);
@@ -40,9 +41,9 @@ tbl = readtable(csvPath, opts);
 rawColumnNames = string(tbl.Properties.VariableNames);
 
 switch datasetType
-    case 'oltp'
+    case {'tpc_c', 'oltp', 'tpcc', 'tpc-c'}
         if width(tbl) < 4
-            error('OLTP CSV must contain timestamp, at least one metric, label1, and label2.');
+            error('TPC-C CSV must contain timestamp, at least one metric, label1, and label2.');
         end
 
         timestamps = tbl{:, 1};
@@ -87,7 +88,7 @@ switch datasetType
             'columnIDX', 'Omega_Cauchy_large', 'Omega_Cauchy_small');
 
     otherwise
-        error('Unknown dataset type "%s". Use ''oltp'' or ''baro''.', datasetType);
+        error('Unknown dataset type "%s". Use ''tpc_c'' or ''baro'' (''oltp'' is an alias for ''tpc_c'').', datasetType);
 end
 
 fprintf('Saved CauSample dataset MAT file: %s\n', outputPath);

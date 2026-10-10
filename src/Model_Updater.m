@@ -1,7 +1,7 @@
 function [mu_updated, A_updated, beta_updated, S_mu, S_a, S_beta] = ...
-    update_anomaly_model(mu, A, beta, events, new_events, w, T, M, max_iter, epsilon, S_mu_init, ...
+    Model_Updater(mu, A, beta, events, new_events, w, T, M, max_iter, epsilon, S_mu_init, ...
     S_a_init, S_beta_init, Par, W_idx)
-% UPDATE_ANOMALY_MODEL Incorporate newly sampled anomaly events.
+% MODEL_UPDATER Incorporate newly sampled anomaly events.
 %   Model Updater (Section 4.6).
 %   Reuse S_mu_init, S_a_init, and S_beta_init, accumulate contributions from
 %   new_events, and update background, excitation, and decay parameters.

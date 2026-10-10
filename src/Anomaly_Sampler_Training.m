@@ -1,6 +1,6 @@
 function [anomaly_mu, anomaly_A, anomaly_beta, S_mu, S_A, S_beta, events, Par] = ...
-    learn_anomaly_model(Omega_Anomalies, total_T, M, max_iter, epsilon, prior_stru)
-% LEARN_ANOMALY_MODEL Initialize the SCS-constrained anomaly model.
+    Anomaly_Sampler_Training(Omega_Anomalies, total_T, M, max_iter, epsilon, prior_stru)
+% ANOMALY_SAMPLER_TRAINING Initialize the SCS-constrained anomaly model.
 %   Anomaly Sampler: offline parameter learning (Section 4.3).
 %   Omega_Anomalies contains event indicators over total_T time steps.
 %   prior_stru specifies permitted parent-to-child dependencies; diagonal

@@ -1,20 +1,19 @@
 function results = CauSample(datasetName)
 % CAUSAMPLE Run adaptive sampling and reconstruction on a bundled dataset.
 %
-%   results = CauSample('oltp')
+%   results = CauSample('tpc_c')
 %   results = CauSample('online_boutique')
 %   results = CauSample('sock_shop')
-%   CauSample() selects the OLTP input.
+%   CauSample() selects TPC-C; 'oltp' remains a compatibility alias.
 %
 %   The runner loads causample_config, prepares metric matrices, calls
 %   causample_pipeline, and evaluates sampling ratio, NMAE, anomaly F1,
-%   and processing time. Run prepare_causample_data once before OLTP.
+%   and processing time. Run prepare_causample_data once before TPC-C.
 %   See README.md for requirements and docs/data_format.md for input scope.
 
 if nargin < 1 || isempty(datasetName)
-    datasetName = 'oltp';
+    datasetName = 'tpc_c';
 end
-datasetName = lower(strtrim(char(datasetName)));
 
 srcDir = fileparts(mfilename('fullpath'));
 addpath(srcDir);
@@ -24,53 +23,12 @@ addpath(srcDir);
 % -------------------------------------------------------------------------
 run(fullfile(srcDir, 'causample_config.m'));
 
-switch datasetName
-    case 'oltp'
-        dataset = struct();
-        dataset.name = 'OLTP';
-        dataset.path = '../dataset/mysql_510_608_withLabels.mat';
-        dataset.csv_path = '../dataset/combined_metrics_510_608_with_labels.csv';
-        dataset.type = 'raw';
-        dataset.batch_size = 100;
-        dataset.window_size = 23;
-        dataset.max_time_steps = 11600;
-
-    case 'online_boutique'
-        dataset = struct();
-        dataset.name = 'Online Boutique';
-        dataset.path = '../dataset/BARO_OB_w7T50.mat';
-        dataset.type = 'preprocessed';
-        dataset.batch_size = 50;
-        dataset.window_size = 7;
-        dataset.max_time_steps = 700;
-        params.theta_r=5e-6;
-        params.theta_c=1;
-
-    case 'sock_shop'
-        dataset = struct();
-        dataset.name = 'Sock Shop';
-        dataset.path = '../dataset/BARO_SS_w7T50.mat';
-        dataset.type = 'preprocessed';
-        dataset.batch_size = 50;
-        dataset.window_size = 7;
-        dataset.max_time_steps = 700;
-        params.theta_r=5e-7;
-        params.theta_c=1e-4;
-
-    otherwise
-        error(['Unknown dataset "%s". Use ''oltp'', ''online_boutique'', ' ...
-               'or ''sock_shop''.'], datasetName);
-end
-
-dataset.path = resolvePath(srcDir, dataset.path);
-if isfield(dataset, 'csv_path')
-    dataset.csv_path = resolvePath(srcDir, dataset.csv_path);
-end
+[dataset, params] = causample_dataset_config(datasetName, params);
 
 if ~exist(dataset.path, 'file')
     if strcmp(dataset.type, 'raw') && isfield(dataset, 'csv_path') && exist(dataset.csv_path, 'file')
         error(['Dataset MAT file not found: %s\n' ...
-               'Create it from the bundled OLTP CSV with: cd(''%s''); import_dataset_from_csv'], ...
+               'Create it from the bundled TPC-C CSV with: cd(''%s''); import_dataset_from_csv'], ...
                dataset.path, srcDir);
     end
     error('Dataset MAT file not found: %s', dataset.path);
@@ -222,15 +180,4 @@ results = struct( ...
 
 disp('=== CauSample summary ===');
 disp(results);
-end
-
-function resolvedPath = resolvePath(baseDir, pathText)
-pathText = char(pathText);
-if startsWith(pathText, filesep) || ...
-        ~isempty(regexp(pathText, '^[A-Za-z]:[\\/]', 'once')) || ...
-        startsWith(pathText, '\\')
-    resolvedPath = pathText;
-else
-    resolvedPath = fullfile(baseDir, pathText);
-end
 end
