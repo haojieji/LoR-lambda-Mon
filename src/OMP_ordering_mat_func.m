@@ -1,5 +1,6 @@
 function r_C = OMP_ordering_mat_func(X, r_Ord, r_Stru, K, thr)
 %OMP_Ordering_MAT_FUNC Perform OMP for causal representation using the causal ordering.
+%   CauSample auxiliary routine; retained outside the current pipeline.
 %   This code implements the subspace clustering algorithm described in
 %
 %   It perform OMP for each column of causal-ordered data X = [x_1, \dots, x_N]

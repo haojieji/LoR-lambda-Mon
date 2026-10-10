@@ -1,5 +1,7 @@
 function Bols = ols3(X,k,Stru)
-% OLS function based on OMP written by
+% OLS3 Estimate causal weights using greedy parent selection and least squares.
+%   X contains metric streams by row; k specifies their order, and Stru
+%   restricts candidate parents. Bols stores weights in the reordered space.
 
 dims = size(X,1);
 max_parents = ceil(sqrt(dims));
