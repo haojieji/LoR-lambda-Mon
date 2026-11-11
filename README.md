@@ -5,8 +5,6 @@ Code, data, and supplementary proofs for **CauSample**, an adaptive metric sampl
 - **Causal sampling bound:** local causal correlations guide per-metric sampling frequencies to reduce the samples needed for fine-grained reconstruction.
 - **Anomaly sampling:** directed dependencies guide anomaly propagation modeling and additional sampling to capture transient anomalies.
 
-**[Supplementary material: appendix.pdf](appendix.pdf)** contains the complete sampling-bound proof and additional mathematical details.
-
 ## Contents
 
 | Directory or file | Contents |
@@ -15,7 +13,6 @@ Code, data, and supplementary proofs for **CauSample**, an adaptive metric sampl
 | [dataset/](dataset/README.md) | TPC-C trace, fault timeline, and selected Online Boutique and Sock Shop metric data |
 | [docs/algorithm_overview.md](docs/algorithm_overview.md) | Mapping from paper components to implementation files |
 | [docs/data_format.md](docs/data_format.md) | Data formats, preprocessing, and evaluation labels |
-| [appendix.pdf](appendix.pdf) | Supplementary proofs and derivations |
 | [SHA256SUMS](SHA256SUMS) | Checksums for the released data and appendix |
 
 This artifact provides the implementation, bundled inputs, and supplementary material for inspection. The OB/SS files contain selected preprocessed traces from BARO; the repository does not include the complete baseline and parameter-sweep scripts needed to regenerate every paper figure.
