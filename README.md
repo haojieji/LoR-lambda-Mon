@@ -5,7 +5,7 @@ CauSample is an adaptive metric sampling framework that uses learned local causa
 - **Reduce reconstruction samples:** local parent representations guide child-metric sample budgets, while temporal representations support root metrics.
 - **Guide anomaly sampling:** a model of anomaly propagation directs additional sampling between base samples.
 
-This repository contains the MATLAB implementation and selected TPC-C, Online Boutique, and Sock Shop inputs. It does not include the complete baseline and parameter-sweep scripts needed to regenerate every paper figure.
+This repository contains the MATLAB implementation and selected TPC-C, Online Boutique, and Sock Shop inputs.
 
 ## Quick start
 
@@ -36,8 +36,8 @@ results = CauSample('sock_shop');
 | Dataset | Bundled input | Description |
 | --- | --- | --- |
 | TPC-C | [TPC_C_metrics_with_labels.csv.gz](dataset/TPC_C_metrics_with_labels.csv.gz) | Database metrics collected under a TPC Benchmark C workload; `prepare_causample_data` creates the MAT input. |
-| Online Boutique (OB) | [BARO_OB_w7T50.mat](dataset/BARO_OB_w7T50.mat) | A selected, preprocessed microservice trace with 54 metrics and 700 time steps. |
-| Sock Shop (SS) | [BARO_SS_w7T50.mat](dataset/BARO_SS_w7T50.mat) | A selected, preprocessed microservice trace with 54 metrics and 700 time steps. |
+| Online Boutique (OB) | [BARO_OB_w7T50.mat](dataset/BARO_OB_w7T50.mat) | Metrics collected from the Online Boutique microservice application. |
+| Sock Shop (SS) | [BARO_SS_w7T50.mat](dataset/BARO_SS_w7T50.mat) | Metrics collected from the Sock Shop microservice application. |
 
 OB/SS inputs originate from the [BARO artifact](https://github.com/phamquiluan/baro). The [dataset directory](dataset/README.md) also contains the original TPC-C CSV files and fault timeline.
 
