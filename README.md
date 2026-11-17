@@ -91,7 +91,7 @@ Start with [CauSample.m](src/CauSample.m), which invokes [causample_pipeline.m](
 | `online_boutique` | 50 | 7 | 5e-6 | 1 |
 | `sock_shop` | 50 | 7 | 5e-7 | 1e-4 |
 
-Following the sampling-coefficient convention in Section V-A (Parameter Settings), `theta_r` and `theta_c` absorb the effects of the sampling-bound parameters $\mu$, $c$, and $\delta$ into tunable coefficients for root and child metrics, respectively. They scale the corresponding base sample budgets to adjust sampling rates.
+Following the sampling-coefficient convention in Section V-A (Parameter Settings), `theta_r` and `theta_c` absorb the effects of $\mu$, $c$, and $\delta$ in the base-frequency formulas (Equations (8) and (10), Section IV-B) into tunable coefficients for root and child metrics, respectively. They scale the corresponding base sample budgets to adjust sampling rates.
 
 For root metrics, self-embedding supplies overlapping training segments, and the small default sampling coefficients scale the resulting rank-based budgets. Temporal ranks and parent counts are inferred from the data and learned SCS rather than set as hyperparameters. The code's `w` corresponds to the paper's window size `W`.
 
