@@ -1,5 +1,5 @@
 function [X_e_hat, X_e_hat_normal, Omega_e, Omega_r_e, Omega_L_e, Omega_Anomalies_e, Times_sample, ...
-    Overhead_cputime_decision, Overhead_cputime_sampling, Overhead_cputime_reconstruction, ...
+    Overhead_cputime_sampling, Overhead_cputime_reconstruction, ...
     Overhead_cputime_modelupdate] = ...
     causample_pipeline(X, X_e, w, w_size, T, param, columnIDX, columnNames)
 % CAUSAMPLE_PIPELINE Coordinate CauSample's offline and online stages.
@@ -17,7 +17,8 @@ function [X_e_hat, X_e_hat_normal, Omega_e, Omega_r_e, Omega_L_e, Omega_Anomalie
 %   X_e_hat/X_e_hat_normal return estimates with/without sampled anomalies.
 %   Omega_e/Omega_r_e/Omega_L_e/Omega_Anomalies_e record sampling indicators.
 %   Overhead_cputime_* stores CPU seconds; Times_sample uses elapsed seconds.
-%   See ../algorithm_overview.md for state coordinates and output conventions.
+%   See ../algorithm_overview.md for algorithm state and
+%   ../README.md#processing-time for timing scope and output conventions.
 
 [M, N] = size(X_e);
 num_batch = floor(N/T);
@@ -78,7 +79,6 @@ r_estimators = zeros(M, num_batch);
 r_iscomplete = zeros(M, num_batch);
 
 Times_sample = zeros(1,num_batch);
-Overhead_cputime_decision = zeros(1,num_batch);
 Overhead_cputime_sampling = zeros(1,num_batch);
 Overhead_cputime_reconstruction = zeros(1,num_batch);
 Overhead_cputime_modelupdate = zeros(1,num_batch);
@@ -139,7 +139,6 @@ for batch_idx = 1:num_batch
         X_t = X_e(:, (batch_idx-1)*T+1 : batch_idx*T);
         % Low-Rank Sampler: advance the window and update temporal ranks.
         % Remove the oldest batch from the data window.
-        cputime_decision_start = cputime;
         idx_oldest = W_idx(1);
         W_idx = W_idx(2:end);
         W(:, (size(W,2)+1):(size(W,2)+T) ) = X_t;
@@ -147,7 +146,6 @@ for batch_idx = 1:num_batch
         [U_W, U_W_idx, ranks, r_estimators] = ...
             Low_Rank_Sampler('advance', idx_oldest, M, w_size, param, batch_idx, ...
             U_W, U_W_idx, ranks, r_estimators);
-        Overhead_cputime_decision(batch_idx) = cputime - cputime_decision_start;
 
         Time_sample_t = 0;
 
@@ -172,10 +170,8 @@ for batch_idx = 1:num_batch
             recovery_batch_count = recovery_batch_count+1;
             Overhead_cputime_sampling(batch_idx) = cputime - cputime_sampling_start;
 
-            cputime_decision_start = cputime;
             [U_W, U_W_idx, ranks, r_estimators] = ...
                 Low_Rank_Sampler('observe', X_t, batch_idx, M, param, U_W, U_W_idx, ranks, r_estimators);
-            Overhead_cputime_decision(batch_idx) = Overhead_cputime_decision(batch_idx) + (cputime-cputime_decision_start);
             % Extend the history used for delayed reconstruction.
             U_W_union(:,size(U_W_union,2)+1,:) = X_t';
             num_union_columns = length(U_W_union_idx);

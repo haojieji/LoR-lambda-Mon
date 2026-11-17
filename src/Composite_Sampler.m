@@ -12,7 +12,7 @@ function [Omega_t_m, Omega_t_m_r, Omega_t_m_L, Omega_t_m_Anomalies, Omega_Anomal
 %   training batches.
 %   Candidate acceptance uses ten random levels and a historical intensity maximum.
 %   Base and candidate writes to Omega_Anomalies retain different coordinates;
-%   see ../algorithm_overview.md for the sampling-count limitation.
+%   see ../README.md#sampling-ratio for the sampling-count limitation.
 
 %% 1. Base sampling from the Low-Rank Sampler budget
 Omega_t_m = generate_base_schedule(T, sample_budget)';

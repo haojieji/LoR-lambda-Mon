@@ -10,7 +10,8 @@ function varargout = Low_Rank_Sampler(operation, varargin)
 %   Zero indices mark unused columns. ranks is 1-by-M; r_estimators stores
 %   sampled residuals by metric and batch. Only fully collected batches enter
 %   U_W. The budget uses theta_r or theta_c and is at least one sample.
-%   The paper-to-code map and budget convention are in ../algorithm_overview.md.
+%   See README.md#paper-to-code-map for the component map and
+%   ../algorithm_overview.md for the budget convention.
 
 switch operation
     case 'initialize'

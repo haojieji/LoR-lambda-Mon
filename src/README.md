@@ -15,13 +15,13 @@ Start with [CauSample.m](CauSample.m), which loads configuration and data, invok
 | IV-F | Model Updater | [Model_Updater.m](Model_Updater.m) updates the anomaly model from sampled events. |
 | V-A | Evaluation | [CauSample.m](CauSample.m) computes sampling/NMAE/timing summaries; [evaluate_anomaly_preservation.m](evaluate_anomaly_preservation.m) computes precision, recall, and F1. |
 
-This table maps component responsibilities, not a claim that every implementation expression equals a paper equation. See [workflow and implementation conventions](../algorithm_overview.md).
+This table maps component responsibilities, not a claim that every implementation expression equals a paper equation. See [workflow and implementation conventions](../algorithm_overview.md), and the README for [output and metric definitions](../README.md#outputs-and-evaluation).
 
 ## Supporting files
 
-- **Configuration:** [causample_config.m](causample_config.m) and [causample_dataset_config.m](causample_dataset_config.m).
+- **Configuration:** [causample_config.m](causample_config.m) and [causample_dataset_config.m](causample_dataset_config.m); see [parameter settings](../README.md#parameters).
 - **Data preparation:** [prepare_causample_data.m](prepare_causample_data.m) and [import_dataset_from_csv.m](import_dataset_from_csv.m) create the TPC-C input; [load_causample_dataset.m](load_causample_dataset.m) calls [preprocess_metric_data.m](preprocess_metric_data.m) for raw input.
-- **Input checks:** [validate_causample.m](validate_causample.m) and [test_causample.m](test_causample.m). Neither runs the full algorithm.
+- **Input checks:** [validate_causample.m](validate_causample.m) and [test_causample.m](test_causample.m); see [check instructions and scope](../README.md#input-checks).
 - **Visualization:** [plot_causal_structure.m](plot_causal_structure.m).
 
 ## Helpers and attribution
