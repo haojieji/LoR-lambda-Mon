@@ -43,6 +43,23 @@ validate_causample('sock_shop')
 
 These checks load the inputs and verify source availability and basic dimensions. `test_causample(datasetName)` additionally checks the component-file inventory and asserts that validation succeeds. Neither command runs the sampling and reconstruction algorithm. File checksums are in [SHA256SUMS](SHA256SUMS).
 
+## Outputs and evaluation
+
+`results = CauSample(datasetName)` returns a structure and prints its fields. Evaluation uses online observations after training. The returned fields are:
+
+| Field | Meaning | Paper section |
+| --- | --- | --- |
+| `dataset` | Dataset name | — |
+| `sampling_ratio` | Fraction of online metric entries marked as sampled | V-A |
+| `NMAE` | Normalized mean absolute reconstruction error on the original metric scale | V-A |
+| `perf_Precision`, `perf_Recall`, `perf_F1` | Anomaly-preservation scores against per-metric Cauchy labels, pooled across online metric entries | V-A |
+| `avg_processing_time` | Mean CPU seconds per online batch: `avg_cpu_sampling + avg_cpu_modelupdate + avg_cpu_reconstruction` | V-A (Processing time) |
+| `avg_cpu_sampling` | Mean CPU seconds per online batch for sampling, including budget calculation | IV-D |
+| `avg_cpu_reconstruction` | Mean CPU seconds per online batch for reconstruction | IV-E |
+| `avg_cpu_modelupdate` | Mean CPU seconds per online batch for model updating | IV-F |
+| `time_sample_permetric` | Mean of nonzero per-batch elapsed sampling times divided by the metric count; separate from `avg_processing_time` | — |
+| `X_e_hat` | Reconstructed metric matrix on the original value scale, including the embedded training prefix | IV-E |
+
 ## Datasets
 
 | Dataset | Bundled input | Description |
@@ -77,22 +94,5 @@ Start with [CauSample.m](src/CauSample.m), which invokes [causample_pipeline.m](
 `theta_r` and `theta_c` scale root- and child-metric base budgets. For root metrics, self-embedding supplies overlapping training segments, and the small default `theta_r` values scale the resulting rank-based budgets. Temporal ranks and parent counts are inferred from the data and learned SCS rather than set as hyperparameters. The code's `w` corresponds to the paper's window size `W`.
 
 `yita` controls the residual tolerance in rank maintenance and reconstruction. `params.beta` counts recovery batches, distinct from the anomaly model's decay matrix. `SPIKE_LIMIT`/`DIP_LIMIT` set detection thresholds. ALS and anomaly-model iteration settings control their respective solvers. Set `visualization.enable = false` to disable plots.
-
-## Outputs and evaluation
-
-`results = CauSample(datasetName)` returns a structure and prints its fields. Evaluation uses online observations after training. The returned fields are:
-
-| Field | Meaning | Paper section |
-| --- | --- | --- |
-| `dataset` | Dataset name | — |
-| `sampling_ratio` | Fraction of online metric entries marked as sampled | V-A |
-| `NMAE` | Normalized mean absolute reconstruction error on the original metric scale | V-A |
-| `perf_Precision`, `perf_Recall`, `perf_F1` | Anomaly-preservation scores against per-metric Cauchy labels, pooled across online metric entries | V-A |
-| `avg_processing_time` | Mean CPU seconds per online batch: `avg_cpu_sampling + avg_cpu_modelupdate + avg_cpu_reconstruction` | V-A (Processing time) |
-| `avg_cpu_sampling` | Mean CPU seconds per online batch for sampling, including budget calculation | IV-D |
-| `avg_cpu_reconstruction` | Mean CPU seconds per online batch for reconstruction | IV-E |
-| `avg_cpu_modelupdate` | Mean CPU seconds per online batch for model updating | IV-F |
-| `time_sample_permetric` | Mean of nonzero per-batch elapsed sampling times divided by the metric count; separate from `avg_processing_time` | — |
-| `X_e_hat` | Reconstructed metric matrix on the original value scale, including the embedded training prefix | IV-E |
 
 See [LICENSE](LICENSE) for the project license; third-party notices remain in their source files.
