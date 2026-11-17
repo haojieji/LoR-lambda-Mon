@@ -9,10 +9,11 @@
 % This file stores implemented algorithm and visualization settings.
 % Dataset-specific overrides are applied afterwards by causample_dataset_config.
 
-% Algorithm parameters
+% Algorithm parameters (Sections IV-B--IV-F).
+% Dataset overrides are applied after this file; see causample_dataset_config.m.
 params = struct();
 
-% Low-Rank Sampler parameters
+% Low-Rank Sampler parameters: yita also gates rank updates and reconstruction.
 params.theta_r = 5e-6;      % Base sample-budget scale for root metrics
 params.theta_c = 1e-1;      % Base sample-budget scale for child metrics
 params.yita = 1e-6;         % Normalized projection residual tolerance

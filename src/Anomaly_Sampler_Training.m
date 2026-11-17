@@ -1,23 +1,14 @@
 function [anomaly_mu, anomaly_A, anomaly_beta, S_mu, S_A, S_beta, events, Par] = ...
     Anomaly_Sampler_Training(Omega_Anomalies, total_T, M, max_iter, epsilon, prior_stru)
-% ANOMALY_SAMPLER_TRAINING Initialize the SCS-constrained anomaly model.
-%   Anomaly Sampler: offline parameter learning (Section 4.3).
-%
-%   [anomaly_mu, anomaly_A, anomaly_beta, S_mu, S_A, S_beta, events, Par] = ...
-%       Anomaly_Sampler_Training(Omega_Anomalies, total_T, M, max_iter, ...
-%       epsilon, prior_stru)
-%
-%   Omega_Anomalies is an M-by-time_count mask; its first total_T columns
-%   supply original-time events. prior_stru is an M-by-M dependency mask
-%   (target metric by parent); the identity adds self-excitation. max_iter
-%   and epsilon are the iteration cap and absolute convergence tolerance.
-%   Inputs are read-only; all learned state is returned explicitly.
-%
-%   anomaly_mu/S_mu are M-by-1 background rates/responsibility totals.
-%   anomaly_A/anomaly_beta and S_A/S_beta are M-by-M excitation strengths,
-%   decay rates, parent-event responsibility totals, and lag-weighted totals.
-%   events/Par are M-by-1 cells of original event times/allowed parent indices.
-%   S_A is the same excitation statistic consumed by Model_Updater.
+% ANOMALY_SAMPLER_TRAINING Learn the SCS-constrained anomaly model.
+%   Section IV-C: Anomaly Sampler, offline parameter learning.
+%   Omega_Anomalies contains original-time event indicators; prior_stru(m,p)
+%   permits parent p to excite metric m. Self-excitation is also included.
+%   The E-step assigns events to background or earlier parent/self events;
+%   the M-step updates background rates, excitation weights, and decay rates.
+%   anomaly_mu is M-by-1; anomaly_A/anomaly_beta are M-by-M (target by parent).
+%   S_mu/S_A/S_beta are the statistics passed to Model_Updater.
+%   events/Par contain original event times and permitted parent/self indices.
 
 % Initialize parameters:
 anomaly_mu = rand(M, 1); % Initial background rates

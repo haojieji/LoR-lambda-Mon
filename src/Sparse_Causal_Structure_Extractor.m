@@ -1,7 +1,7 @@
 function [B, Stru, Ord, IDX_root, IDX_intermedia, IDX_groups, numClusters, eigns] = ...
     Sparse_Causal_Structure_Extractor(X_train)
 % SPARSE_CAUSAL_STRUCTURE_EXTRACTOR Learn the sparse causal structure (SCS).
-%   Paper Section 4.1: cluster locally correlated metrics, then discover
+%   Paper Section IV-A: cluster locally correlated metrics, then discover
 %   directed dependencies within each cluster, before anomaly separation.
 %
 %   Input X_train is M-by-N original training data (metrics by time).

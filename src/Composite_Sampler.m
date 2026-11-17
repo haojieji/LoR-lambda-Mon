@@ -3,38 +3,16 @@ function [Omega_t_m, Omega_t_m_r, Omega_t_m_L, Omega_t_m_Anomalies, Omega_Anomal
     Composite_Sampler(metric_idx, sample_budget, T, param, X_t_m, X, Omega, ...
     Omega_Anomalies, events, new_events, Par, Cauchy_MEDIANs, Cauchy_MADs, Cauchy_Trans, ...
     W_idx, w_size, w, anomaly_mu, anomaly_A, anomaly_beta, Lambda, Lambda_normalize)
-% COMPOSITE_SAMPLER Collect base and anomaly-guided samples for one metric.
-%   Composite Sampler (Section 4.4).
-%
-%   [Omega_t_m, Omega_t_m_r, Omega_t_m_L, Omega_t_m_Anomalies, ...
-%       Omega_Anomalies, events, new_events, Lambda, Lambda_normalize] = ...
-%       Composite_Sampler(metric_idx, sample_budget, T, param, X_t_m, X, ...
-%       Omega, Omega_Anomalies, events, new_events, Par, Cauchy_MEDIANs, ...
-%       Cauchy_MADs, Cauchy_Trans, W_idx, w_size, w, anomaly_mu, anomaly_A, ...
-%       anomaly_beta, Lambda, Lambda_normalize)
-%
-%   metric_idx is a global metric index and sample_budget is the scalar base
-%   budget for the 1-by-T segment X_t_m. X is the M-by-enhanced_time_count
-%   reconstructed series. Omega is retained as an unused compatibility input;
-%   robust statistics use the reconstructed prefix, irrespective of masks.
-%   param supplies SPIKE_LIMIT/DIP_LIMIT. Cauchy_Trans is a function handle;
-%   Cauchy_MEDIANs/MADs contain one value per metric and are updated only in
-%   this call's local copies. W_idx holds enhanced batch indices; w_size/w
-%   are the enhanced/original window batch counts.
-%
-%   anomaly_mu is M-by-1; anomaly_A/anomaly_beta are M-by-M (target by parent).
-%   events/new_events and Par are M-by-1 cells holding original event times
-%   and allowed parent/self metric indices. Lambda/Lambda_normalize contain
-%   M-by-original_time_count occurrence rates/normalized probabilities.
-%   The caller supplies the mutable Omega_Anomalies mask; legacy base and
-%   candidate writes use different time coordinates, documented below.
-%
-%   The first four outputs are 1-by-T masks: retained normal samples, normal
-%   base samples, normal additional samples, and sampled anomalies. The final
-%   fallback can also retain an anomalous base position in Omega_t_m.
-%   Remaining outputs return the modified anomaly mask, event cells, and
-%   intensity arrays. Candidate timing, random acceptance, and event insertion
-%   are performed here; Anomaly_Sampler evaluates the associated intensities.
+% COMPOSITE_SAMPLER Combine base and anomaly-guided samples for one metric.
+%   Section IV-D: Composite Sampler.
+%   sample_budget is the base sample count for the 1-by-T vector X_t_m.
+%   The first four outputs mark normal, base, additional, and anomalous samples
+%   within this batch. events/new_events use original time; X uses enhanced time.
+%   W_idx contains enhanced batch indices; w_size/w count enhanced/original
+%   training batches.
+%   Candidate acceptance uses ten random levels and a historical intensity maximum.
+%   Base and candidate writes to Omega_Anomalies retain different coordinates;
+%   see ../algorithm_overview.md for the sampling-count limitation.
 
 %% 1. Base sampling from the Low-Rank Sampler budget
 Omega_t_m = generate_base_schedule(T, sample_budget)';
@@ -67,16 +45,13 @@ for base_local_time = base_local_times
     if cdf_value >= param.SPIKE_LIMIT || cdf_value <= param.DIP_LIMIT
         events{metric_idx}(end+1) = enhanced_base_time-w_size*T+w*T;
         new_events{metric_idx}(end+1) = enhanced_base_time-w_size*T+w*T;
-        % Legacy base-mask write uses enhanced time; event cells use original
-        % time. Candidate-mask writes below use original time instead.
         Omega_Anomalies(metric_idx, enhanced_base_time) = 1;
         Omega_t_m_Anomalies(base_local_time) = 1;
         Omega_t_m(base_local_time) = 0;
         Omega_t_m_r(base_local_time) = 0;
     end
 
-    % Predict candidate times before the next base sample.
-    % Compute the current anomaly occurrence rate and its normalization.
+    % Initialize the anomaly intensity for this base-sampling interval.
     [lambda_current, lambda_max, G, Lambda, Lambda_normalize] = ...
         Anomaly_Sampler('initial', metric_idx, enhanced_base_time, T, w_size, w, events, Par, ...
         anomaly_mu, anomaly_A, anomaly_beta, G, Lambda, Lambda_normalize, original_window_times);
@@ -93,12 +68,12 @@ for base_local_time = base_local_times
         if candidate_local_time > min(base_local_time+base_interval,T)
             break;
         end
-        % Decay the accumulated excitation to this candidate time.
+        % Evaluate the decayed excitation at this candidate time.
         [lambda_candidate, G, Lambda, Lambda_normalize] = ...
             Anomaly_Sampler('candidate', metric_idx, enhanced_candidate_time, interval_Y, ...
             T, w_size, w, events, Par, anomaly_mu, anomaly_A, anomaly_beta, G, ...
             Lambda, Lambda_normalize);
-        % Accept a candidate according to its normalized anomaly probability.
+        % Accept using one of ten random levels and the historical maximum.
         if lambda_candidate>0 && (randi([0,9])*0.1) < lambda_candidate/max(Lambda(metric_idx,:))
             Omega_t_m(candidate_local_time) = 1;
             Omega_t_m_L(candidate_local_time) = 1;
@@ -110,7 +85,6 @@ for base_local_time = base_local_times
             if cdf_value >= param.SPIKE_LIMIT || cdf_value <= param.DIP_LIMIT
                 events{metric_idx}(end+1) = enhanced_candidate_time-w_size*T+w*T;
                 new_events{metric_idx}(end+1) = enhanced_candidate_time-w_size*T+w*T;
-                % Preserve the original-time candidate-mask write.
                 Omega_Anomalies(metric_idx, enhanced_candidate_time-w_size*T+w*T) = 1;
                 Omega_t_m_Anomalies(candidate_local_time) = 1;
                 Omega_t_m(candidate_local_time) = 0;

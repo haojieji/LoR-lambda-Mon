@@ -1,50 +1,18 @@
 function varargout = Anomaly_Sampler(operation, varargin)
-% ANOMALY_SAMPLER Evaluate SCS-constrained anomaly occurrence probabilities.
-%   Anomaly Sampler (Section 4.3). Composite_Sampler owns candidate timing,
-%   random acceptance, anomaly detection, and event insertion; this component
-%   computes the intensities and excitation state used by that sampler.
+% ANOMALY_SAMPLER Evaluate anomaly intensities for additional sampling.
+%   Section IV-C: Anomaly Sampler.
+%   initial: evaluate intensity at a base sample and initialize excitation.
+%   candidate: evaluate a candidate using decay and intervening events.
+%   self: add the contribution of a newly detected anomaly in this metric.
+%   history: evaluate intensity over a specified original-time range.
 %
-%   [lambda_current, lambda_max, G, Lambda, Lambda_normalize] = ...
-%       Anomaly_Sampler('initial', metric_idx, enhanced_base_time, T, ...
-%       w_size, w, events, Par, ...
-%       anomaly_mu, anomaly_A, anomaly_beta, G, Lambda, Lambda_normalize, ...
-%       original_window_times)
-%   Return scalar base intensity and its bound; overwrite G entries for
-%   parents with available events and store this time's intensity/probability.
-%
-%   [lambda_candidate, G, Lambda, Lambda_normalize] = ...
-%       Anomaly_Sampler('candidate', metric_idx, enhanced_candidate_time, ...
-%       interval_Y, T, w_size, w, ...
-%       events, Par, anomaly_mu, anomaly_A, anomaly_beta, G, Lambda, ...
-%       Lambda_normalize)
-%   Return scalar candidate intensity, add new event contributions to G, and
-%   store this time's intensity/probability. interval_Y is the candidate gap.
-%
-%   [lambda_candidate, G, Lambda, Lambda_normalize] = ...
-%       Anomaly_Sampler('self', metric_idx, enhanced_candidate_time, T, ...
-%       w_size, w, anomaly_A, ...
-%       anomaly_beta, lambda_candidate, G, Lambda, Lambda_normalize)
-%   After event insertion by the caller, add self-excitation to the scalar
-%   candidate intensity and G(metric_idx,metric_idx), then store the result.
-%
-%   [Lambda, Lambda_normalize] = Anomaly_Sampler('history', M, ...
-%       original_time_range, normalization_time_range, events, Par, ...
-%       anomaly_mu, anomaly_A, ...
-%       anomaly_beta, Lambda, Lambda_normalize)
-%   Replace the selected original-time columns for all M metrics. The
-%   normalization_time_range selects denominator columns; [] uses the full
-%   metric row. Other operations also normalize using the full metric row.
-%
-%   Shared shapes: anomaly_mu is M-by-1; anomaly_A, anomaly_beta, and G are
-%   M-by-M (target metric by parent). events and Par are M-by-1 cells holding
-%   row vectors of original event times and allowed parent/self metric indices.
-%   Lambda/Lambda_normalize are M-by-original_time_count arrays. Events,
-%   parents, and parameters are read-only; only returned state is modified.
-%   T is the segment length; w_size/w are enhanced/original window batch counts.
-%   Enhanced times map to original times by subtracting w_size*T, then adding
-%   w*T. Initial intensity retains a legacy mixed-coordinate lag (see below).
-%   Candidate decay affects the evaluated intensity; G changes only when
-%   event contributions are accumulated, and is not replaced by its decay.
+%   events/Par contain original event times and permitted parent/self indices.
+%   anomaly_mu is M-by-1; anomaly_A/anomaly_beta/G are M-by-M (target by parent).
+%   Lambda stores intensities; Lambda_normalize divides by historical maxima.
+%   Composite_Sampler schedules and accepts candidates and records events.
+%   This snapshot retains the mixed-coordinate initial lag and the candidate
+%   update that decays intensity without replacing G with its decayed value;
+%   see ../algorithm_overview.md for the retained implementation details.
 
 switch operation
     case 'initial'

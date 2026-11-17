@@ -1,9 +1,9 @@
 function [alpha_cau, alpha_his] = fit_reconstruction_coefficients(x, C, H, als_max_iter, als_tol)
 % FIT_RECONSTRUCTION_COEFFICIENTS Fit two reconstruction dictionaries.
-%   Fine-Grained Reconstructor (Section 4.5). x is an S-by-1 sampled-value
+%   Fine-Grained Reconstructor (Section IV-E). x is an S-by-1 sampled-value
 %   vector; C (S-by-Kc) and H (S-by-Kh) use the same sampled time rows.
-%   C contains parent trajectories/history and may also contain child history;
-%   H contains child history. Overlapping/repeated columns are retained.
+%   C contains parent data;
+%   H is a separate block containing the child's own history.
 %   Return alpha_cau (Kc-by-1) and alpha_his (Kh-by-1), using ridge-regularized
 %   alternating least squares. als_max_iter bounds the loop; als_tol compares
 %   successive residual norms. Empty samples/dictionaries return zero vectors.

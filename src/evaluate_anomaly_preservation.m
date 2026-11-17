@@ -1,7 +1,8 @@
 function [perf_Precision, perf_Recall, perf_F1, perf_label_anomalies] = evaluate_anomaly_preservation(X_hat, Labels_anomalies_X, M, w, T)
 %EVALUATE_ANOMALY_PRESERVATION Compute global anomaly precision, recall, and F1.
 %
-% These metrics are the global/micro scores used by the experiment: TP, FP,
+% Section V-A: compare reconstructed-output anomalies with per-metric labels.
+% These are global/micro scores: TP, FP,
 % and FN are counted over all metrics and all evaluation time points before
 % precision, recall, and F1 are calculated.
 

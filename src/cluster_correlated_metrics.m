@@ -1,6 +1,6 @@
 function [r_groups, r_numClusters, r_eigns, B,Bsys] = cluster_correlated_metrics(p_W)
 % CLUSTER_CORRELATED_METRICS Group locally correlated training streams.
-%   Sparse Causal Structure Extractor, Step 1 (Section 4.1).
+%   Sparse Causal Structure Extractor, Step 1 (Section IV-A).
 %   p_W is M-by-N training data (metrics by time). Return M-by-1 group labels
 %   r_groups in 1:r_numClusters and M-by-1 sorted spectral values r_eigns.
 %   B is an M-by-M sparse self-representation coefficient matrix: B(p,m)

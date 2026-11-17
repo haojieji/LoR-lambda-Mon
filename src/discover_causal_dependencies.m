@@ -1,6 +1,6 @@
 function [r_Stru_i, r_B_i, r_Ord] = discover_causal_dependencies(IDX_i, W)
 % DISCOVER_CAUSAL_DEPENDENCIES Order, prune, and fit one metric cluster.
-%   Sparse Causal Structure Extractor, Step 2 (Section 4.1).
+%   Sparse Causal Structure Extractor, Step 2 (Section IV-A).
 %   IDX_i is a row vector of K original metric indices into M-by-N training
 %   data W. Return K-by-K adjacency r_Stru_i and weights r_B_i in causal-order
 %   coordinates: (a,b) means r_Ord(b) -> r_Ord(a). r_Ord is a row vector of

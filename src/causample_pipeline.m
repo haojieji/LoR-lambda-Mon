@@ -2,51 +2,29 @@ function [X_e_hat, X_e_hat_normal, Omega_e, Omega_r_e, Omega_L_e, Omega_Anomalie
     Overhead_cputime_decision, Overhead_cputime_sampling, Overhead_cputime_reconstruction, ...
     Overhead_cputime_modelupdate] = ...
     causample_pipeline(X, X_e, w, w_size, T, param, columnIDX, columnNames)
-% CAUSAMPLE_PIPELINE Coordinate the components of CauSample.
+% CAUSAMPLE_PIPELINE Coordinate CauSample's offline and online stages.
+%   Section III: Overview; Sections IV-A--IV-F: component implementations.
+%   Offline: learn the SCS from original training data, separate anomalies,
+%   build temporal representations, and train the anomaly propagation model.
+%   Online: update ranks, sample each batch, reconstruct it, and update the model.
 %
-%   Offline: extract the SCS from the original training data, separate
-%   anomalies, prepare low-rank representations, and learn the anomaly model.
-%   Online: update temporal ranks, combine base and anomaly-guided sampling,
-%   reconstruct each batch, and update the anomaly model from sampled events.
+%   X is M-by-original_time_count; X_e contains embedded training and online data.
+%   w is the paper's window size W; w_size counts embedded training segments.
+%   T is batch length; param contains algorithm and visualization settings.
+%   B(m,p) denotes p -> m; Stru/Ord give binary adjacency and causal order.
+%   U_W contains temporal history; pending_batch selects full-collection recovery.
 %
-%   Inputs
-%     X           Normalized metric matrix on the original timeline (M-by-N).
-%     X_e         Self-embedded training data followed by online batches.
-%     w           Training-window length in batches (paper W).
-%     w_size      Number of self-embedded training segments.
-%     T           Number of time steps per batch.
-%     param       Parameters from causample_config.
-%     columnIDX   Retained metric indices in the input data.
-%     columnNames Metric names used for plot labels.
-%
-%   Internal notation
-%     W           Current data window; unlike paper W, this is a matrix.
-%     B           Causal weight matrix; B(m,p) denotes p -> m (paper W).
-%     Stru, Ord   Binary causal adjacency and within-cluster order.
-%     U_W         Historical columns spanning each metric's temporal subspace.
-%     ranks       Per-metric temporal-rank estimates.
-%     Omega_*     Binary sampling or anomaly indicator matrices.
-%     anomaly_*   Hawkes background, excitation, and decay parameters.
-%     Lambda      Anomaly occurrence rates before normalization.
-%     Lambda_normalize  Corresponding normalized anomaly probabilities.
-%
-%   Outputs
-%     X_e_hat, X_e_hat_normal    M-by-N_e reconstructions with/without anomalies.
-%     Omega_e, Omega_r_e, Omega_L_e, Omega_Anomalies_e
-%                               M-by-N_e normal, base, additional, anomaly flags.
-%     Times_sample              Wall-clock sampling seconds per metric/batch.
-%     Overhead_cputime_*         CPU seconds per batch for each named stage.
-%   batch_idx indexes X_e segments; w_size segments initialize the history.
-%   pending_batch is zero in normal operation or the segment awaiting recovery.
-%   The _e suffix denotes the self-embedded timeline. See src/README.md
-%   and docs/algorithm_overview.md for the paper-to-code map.
+%   X_e_hat/X_e_hat_normal return estimates with/without sampled anomalies.
+%   Omega_e/Omega_r_e/Omega_L_e/Omega_Anomalies_e record sampling indicators.
+%   Overhead_cputime_* stores CPU seconds; Times_sample uses elapsed seconds.
+%   See ../algorithm_overview.md for state coordinates and output conventions.
 
 [M, N] = size(X_e);
 num_batch = floor(N/T);
 W = [];
 W_idx = [];
 
-%% Low-Rank Sampler: temporal history and rank state (Section 4.2)
+%% Low-Rank Sampler: temporal history and rank state (Section IV-B)
 [U_W, U_W_idx, U_W_basis, U_W_basis_idx, ranks, U_W_union, U_W_union_idx] = ...
     Low_Rank_Sampler('initialize', T, w_size, M);
 
@@ -236,7 +214,7 @@ for batch_idx = 1:num_batch
                     disp(["OK", pending_batch]);
                 end
 
-                % Model Updater: incorporate newly sampled anomalies (Section 4.6).
+                % Model Updater: incorporate newly sampled anomalies (Section IV-F).
                 cputime_modelupdate_start = cputime;
                 [anomaly_mu, anomaly_A, anomaly_beta, S_mu, S_A, S_beta] = ...
                     Model_Updater(anomaly_mu, anomaly_A, anomaly_beta, events, ...
@@ -290,7 +268,8 @@ for batch_idx = 1:num_batch
                 cputime_sampling_i = cputime - cputime_sampling_start;
                 Overhead_cputime_sampling(batch_idx) = Overhead_cputime_sampling(batch_idx) + cputime_sampling_i;
                 Time_sample_t = Time_sample_t + toc(time_sample);
-                % Reconstruct roots from temporal history and children from parents/history.
+                % Reconstruct roots from temporal history and children from
+                % parent data and their own history.
                 cputime_reconstruction_start = cputime;
                 [X_e_hat_t, X_e_hat_t_normal, r_estimators, r_iscomplete, ranks] = ...
                     Fine_Grained_Reconstructor('batch', IDX_root_i, IDX_child_i, U_W, ...
@@ -312,7 +291,7 @@ for batch_idx = 1:num_batch
 
             end % Process all local DAGs.
 
-            % Model Updater: incorporate newly sampled anomalies (Section 4.6).
+            % Model Updater: incorporate newly sampled anomalies (Section IV-F).
             cputime_modelupdate_start = cputime;
             [anomaly_mu, anomaly_A, anomaly_beta, S_mu, S_A, S_beta] = ...
                 Model_Updater(anomaly_mu, anomaly_A, anomaly_beta, events, ...

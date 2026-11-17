@@ -82,8 +82,7 @@ Cauchy_Trans = @(x, m) (x >= m) .* x + ...
     Omega_Cauchy_large, Omega_Cauchy_small, Cauchy_Trans);
 Labels_anomalies_X = double(Omega_Cauchy_large | Omega_Cauchy_small);
 
-% Normalize each metric to make sampling and reconstruction comparable across
-% metrics with different physical units.
+% Normalize over the complete selected trace before the train/online split.
 X_min = zeros(1, size(X, 1));
 X_max_min = zeros(1, size(X, 1));
 X_max = zeros(1, size(X, 1));

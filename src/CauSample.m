@@ -8,8 +8,8 @@ function results = CauSample(datasetName)
 %
 %   The runner loads causample_config, prepares metric matrices, calls
 %   causample_pipeline, and evaluates sampling ratio, NMAE, anomaly F1,
-%   and processing time. Run prepare_causample_data once before TPC-C.
-%   See README.md for requirements and docs/data_format.md for input scope.
+%   and timing summaries (Section V-A). Prepare the TPC-C MAT input first.
+%   See ../README.md for requirements and ../data_format.md for input scope.
 
 if nargin < 1 || isempty(datasetName)
     datasetName = 'tpc_c';
@@ -96,7 +96,8 @@ for i = 1:M
 end
 
 % Sampling rate and NMAE are evaluated only after the training/enhancement
-% window, matching the experiment setup.
+% window. Sampling totals use the recorded indicators; see the known
+% coordinate limitation in ../algorithm_overview.md.
 test_range = w_size * T + 1 : num_batch * T;
 Omega_all = double(Omega_e | Omega_Anomalies_e);
 perf_sampleratio = sum(Omega_all(:, test_range), 'all') / ((num_batch - w_size) * T * M);

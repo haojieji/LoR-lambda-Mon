@@ -1,39 +1,16 @@
 function varargout = Low_Rank_Sampler(operation, varargin)
-% LOW_RANK_SAMPLER Maintain temporal ranks and determine base sample budgets.
-%   Paper Section 4.2. Each operation returns its modified state explicitly:
+% LOW_RANK_SAMPLER Maintain temporal histories and base sample budgets.
+%   Section IV-B: Low-Rank Sampler.
+%   initialize: allocate history, basis, rank, and batch-index arrays.
+%   train/observe: incorporate a fully collected training/recovery batch.
+%   advance: expire old history and provisionally increment temporal ranks.
+%   budget: use temporal rank for root metrics and parent count for child metrics.
 %
-%   [U_W, U_W_idx, U_W_basis, U_W_basis_idx, ranks, U_W_union, ...
-%       U_W_union_idx] = Low_Rank_Sampler('initialize', T, w_size, M)
-%   Allocate history/basis arrays (T-by-w_size-by-M), batch-index arrays
-%   (M-by-w_size), ranks (1-by-M), and initially empty union history/indices.
-%
-%   [U_W, U_W_idx, U_W_union, U_W_union_idx, U_W_basis, U_W_basis_idx, ...
-%       ranks, r_estimators] = Low_Rank_Sampler('train', X_t, batch_idx, ...
-%       M, param, U_W, U_W_idx, U_W_union, U_W_union_idx, U_W_basis, ...
-%       U_W_basis_idx, ranks, r_estimators)
-%   Add a fully collected M-by-T batch to history/union and update the basis,
-%   ranks, and residual estimates using param.yita. Union history has shape
-%   T-by-history_count-by-M; its index vector stores enhanced batch indices.
-%
-%   [U_W, U_W_idx, ranks, r_estimators] = Low_Rank_Sampler('advance', ...
-%       oldest_batch_idx, M, w_size, param, batch_idx, U_W, U_W_idx, ...
-%       ranks, r_estimators)
-%   Remove expired columns, update ranks/residuals, then increment all ranks.
-%
-%   [U_W, U_W_idx, ranks, r_estimators] = Low_Rank_Sampler('observe', ...
-%       X_t, batch_idx, M, param, U_W, U_W_idx, ranks, r_estimators)
-%   Append a fully collected M-by-T recovery batch and update ranks/residuals.
-%   History arrays may grow when a new column is appended. Zero indices mark
-%   unused columns; r_estimators is an M-by-batch_count residual matrix.
-%
-%   sample_count = Low_Rank_Sampler('budget', metric_idx, ...
-%       root_metric_indices, ranks, ordered_metric_indices, B_cluster, ...
-%       local_metric_idx, param)
-%   Read state without modifying it. metric_idx/root_metric_indices use global
-%   metric indices; local_metric_idx is the row in the K-by-K B_cluster.
-%   ordered_metric_indices maps its K rows/columns to global metric indices.
-%   Return a scalar budget using param.theta_r (root temporal rank) or
-%   param.theta_c (child parent count); Composite_Sampler builds the schedule.
+%   U_W is T-by-history_count-by-M; U_W_idx stores enhanced batch indices.
+%   Zero indices mark unused columns. ranks is 1-by-M; r_estimators stores
+%   sampled residuals by metric and batch. Only fully collected batches enter
+%   U_W. The budget uses theta_r or theta_c and is at least one sample.
+%   The paper-to-code map and budget convention are in ../algorithm_overview.md.
 
 switch operation
     case 'initialize'
@@ -140,7 +117,8 @@ if ismember(metric_idx, root_metric_indices)
     r_j = ranks(metric_idx);
     sample_count = max(param.theta_r*r_j*log(r_j), 1);
 else
-    % Child metric: use its local causal rank (parent count).
+    % Child metric: scale the local rank term using its parent count.
+    % The implementation does not explicitly evaluate the joint K,l,delta bound.
     parent_metric_indices = ordered_metric_indices(B_cluster(local_metric_idx,:) ~=0);
     r_j = length(parent_metric_indices);
     sample_count = max(param.theta_c*r_j*log(r_j), 1);

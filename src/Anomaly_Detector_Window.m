@@ -3,7 +3,7 @@ function [W, Omega_Cauchy_large, Omega_Cauchy_small, Cauchy_MEDIANs, Cauchy_MADs
     Anomaly_Detector_Window(W, SPIKE_LIMIT, DIP_LIMIT, Omega_Cauchy_large, Omega_Cauchy_small, ...
     Cauchy_Trans)
 % ANOMALY_DETECTOR_WINDOW Identify spikes and dips in a metric window.
-%   Anomaly Detector (Section 4.1); also used for evaluation labels.
+%   Anomaly Detector (Section IV-A); also used for evaluation labels.
 %   W is M-by-N data; SPIKE_LIMIT/DIP_LIMIT are scalar CDF cutoffs, and
 %   Cauchy_Trans(values,median) is a shape-preserving transform. Input/output
 %   spike/dip masks are M-by-at-least-N state arrays: detections are set to 1.

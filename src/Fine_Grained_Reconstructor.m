@@ -1,38 +1,20 @@
 function varargout = Fine_Grained_Reconstructor(operation, varargin)
-% FINE_GRAINED_RECONSTRUCTOR Recover unsampled root and child metric values.
-%   Paper Section 4.5. Operations return modified state explicitly. M denotes
-%   metrics, T samples per batch, and K batches on the self-embedded timeline.
+% FINE_GRAINED_RECONSTRUCTOR Estimate unsampled root and child metric values.
+%   Section IV-E: Fine-Grained Reconstructor.
+%   batch: reconstruct root metrics from temporal history, then fit child metrics
+%   using parent data. If the sampled residual
+%   is at least yita, regularized ALS combines this parent dictionary with a
+%   separate block of the child's own history.
+%   delayed: retry a pending batch after fully collected recovery batches.
 %
-%   [X_e_hat_t, X_e_hat_t_normal, r_estimators, r_iscomplete, ranks] = ...
-%       Fine_Grained_Reconstructor('batch', IDX_root_i, IDX_child_i, U_W, ...
-%       U_W_idx, Omega_t, Anomalies_t_omega, X_t_omega, X_t, X_e_hat_t, ...
-%       X_e_hat_t_normal, r_estimators, r_iscomplete, ranks, B, param, t)
-%   IDX_root_i/IDX_child_i are row vectors of original metric indices in one
-%   cluster; children must follow causal order. U_W is T-by-H-by-M history;
-%   U_W_idx is M-by-H with occupied batch indices packed before zero padding.
-%   Omega_t/Anomalies_t_omega are M-by-T normal/anomaly sample masks. X_t_omega
-%   holds normal sampled values; X_t holds the original M-by-T current batch.
-%   X_e_hat_t and X_e_hat_t_normal are M-by-T reconstruction state, with/without
-%   restored sampled anomalies. r_estimators/r_iscomplete are M-by-K residual
-%   estimates/0-or-1 completion flags; only these cluster rows at column t are
-%   updated. ranks is 1-by-M: successful roots and all children decrement by 1.
-%   B is M-by-M with B(child,parent) nonzero for an edge. param.yita gates
-%   direct projection; param.als_max_iter/als_tol control coefficient fitting.
-%
-%   [X_e_hat, X_e_hat_normal, r_iscomplete] = Fine_Grained_Reconstructor( ...
-%       'delayed', r_iscomplete, incomplete_batch, numClusters, IDX_root, ...
-%       Omega_e, Omega_Anomalies_e, X_e_hat, X_e_hat_normal, U_W_union, ...
-%       U_W_union_idx, beta_count, B, param, T)
-%   incomplete_batch selects the pending column of M-by-K r_iscomplete.
-%   IDX_root is numClusters-by-M original metric indices with zero padding.
-%   Omega_e/Omega_Anomalies_e and both reconstructions are M-by-N_e state
-%   with N_e >= K*T. Masks select observed values already in X_e_hat. U_W_union
-%   is T-by-Hu-by-M with Hu batch indices in row-vector U_W_union_idx; its last
-%   beta_count columns are recovery batches. B/param follow the batch contract.
-%   Update only incomplete rows in the pending batch and mark them complete.
-%   Roots are processed first; remaining metrics follow sorted original indices.
-%   Both operations restore observed values after fitting. History/dictionary
-%   columns retain their order and repetitions; no basis reduction occurs.
+%   U_W is T-by-history_count-by-M; U_W_idx identifies its occupied columns.
+%   Omega_t/Anomalies_t_omega are M-by-T observation indicators.
+%   X_e_hat_t/X_e_hat_t_normal are M-by-T estimates with/without sampled anomalies.
+%   r_estimators/r_iscomplete store residuals/completion flags by metric and batch.
+%   B(child,parent) identifies an edge; batch children follow the supplied order.
+%   Delayed recovery processes root metrics first, then children by metric index.
+%   Observed values are restored after fitting.
+%   See ../algorithm_overview.md for the reconstruction workflow.
 
 switch operation
     case 'batch'
@@ -63,7 +45,7 @@ for metric_idx = IDX_root_i
     r_estimators(metric_idx,t) = residual_estimate;
 
     if residual_estimate < param.yita
-        % Reconstruct a root using its historical temporal representation.
+        % Reconstruct a root using its historical temporal representation Equation (19).
         reconstructed_root_values = metric_history*pinv(metric_history(sample_time_indices,:))*sample_values;
         X_e_hat_t(metric_idx,:) = reconstructed_root_values';
         X_e_hat_t(metric_idx, sample_time_indices) = sample_values';
@@ -90,8 +72,6 @@ for metric_idx = IDX_child_i
     if ismember(0, r_iscomplete(parent_metric_indices,t))
         can_fit_child = 0;
     else
-        % Begin with current parent trajectories (including restored anomalies),
-        % then append each parent's history in original metric-index order.
         reconstruction_dictionary = X_e_hat_t(parent_metric_indices,:)';
         for parent_metric_idx = parent_metric_indices
             history_count = length(find(U_W_idx(parent_metric_idx,:)~=0));
@@ -109,9 +89,8 @@ for metric_idx = IDX_child_i
     anomaly_time_indices = find(Anomalies_t_omega(metric_idx,:)==1);
     sample_values = X_t_omega(metric_idx,sample_time_indices)';
 
+    % test the child can be reconstructed by its parents
     if can_fit_child
-        % The projection dictionary also includes this child's own history.
-        reconstruction_dictionary = [reconstruction_dictionary metric_history];
         sample_dictionary = reconstruction_dictionary(sample_time_indices, :);
         sample_dictionary_projection = sample_dictionary * pinv(sample_dictionary);
         residual_estimate = (norm(sample_values  - sample_dictionary_projection*sample_values)^2) / (norm(sample_values)^2+eps);
@@ -120,7 +99,7 @@ for metric_idx = IDX_child_i
     end
     r_estimators(metric_idx,t) = residual_estimate;
     if residual_estimate < param.yita
-
+        % reconstructed by its parents Section IV-E
         reconstructed_values = reconstruction_dictionary * pinv(sample_dictionary) * sample_values;
         X_e_hat_t(metric_idx, :) = reconstructed_values';
         X_e_hat_t(metric_idx, sample_time_indices) = X_t_omega(metric_idx,sample_time_indices);
@@ -130,8 +109,7 @@ for metric_idx = IDX_child_i
         r_iscomplete(metric_idx,t) = 1;
     else
         if can_fit_child
-            % Preserve the existing two-block fit: child history occurs in both
-            % reconstruction_dictionary and the separate history block.
+            % reconstructed by its parents and its temporal history Equation (20).
             [alpha_cau, alpha_his] = fit_reconstruction_coefficients(sample_values, sample_dictionary, metric_history(sample_time_indices,:), param.als_max_iter, param.als_tol);
             reconstructed_values = reconstruction_dictionary*alpha_cau + metric_history*alpha_his;
             X_e_hat_t(metric_idx,:) = reconstructed_values';
@@ -186,7 +164,7 @@ if ~isempty(incomplete_metric_indices)
 
         r_iscomplete(root_metric_idx, incomplete_batch) = 1;
     end
-    % 2. Fit children using current parent trajectories and all stored history.
+    % 2. Fit children using parent data and the child's own history.
     % setdiff above preserves the existing sorted original-index traversal.
     for child_metric_idx = incomplete_child_indices
         parent_metric_indices = find(B(child_metric_idx,:)~=0);

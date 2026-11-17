@@ -4,7 +4,7 @@ function [W, U_W_union, Omega_Cauchy_large, Omega_Cauchy_small, Cauchy_MEDIANs, 
     Cauchy_MEDIANs, Cauchy_MADs, Cauchy_Trans, T, t, w_size, w, events, new_events, Omega, ...
     Omega_Anomalies, X, W_idx)
 % ANOMALY_DETECTOR_SAMPLED Update anomaly events after recovery collection.
-%   Anomaly Detector (Section 4.1). W is M-by-(w_size*T), and its last beta
+%   Anomaly Detector (Section IV-A). W is M-by-(w_size*T), and its last beta
 %   batches are newly collected recovery data, 1 <= beta <= min(w_size,H).
 %   T is the number of samples per batch. U_W_union is T-by-H-by-M;
 %   nonzero entries of row-vector U_W_union_idx identify its packed columns.

@@ -1,28 +1,17 @@
 function [mu_updated, A_updated, beta_updated, S_mu, S_A, S_beta] = ...
     Model_Updater(mu, A, beta, events, new_events, w, T, M, max_iter, epsilon, S_mu_init, ...
     S_A_init, S_beta_init, Par, W_idx)
-% MODEL_UPDATER Incorporate newly sampled anomaly events.
-%   Model Updater (Section 4.6).
-%
-%   [mu_updated, A_updated, beta_updated, S_mu, S_A, S_beta] = ...
-%       Model_Updater(mu, A, beta, events, new_events, w, T, M, max_iter, ...
-%       epsilon, S_mu_init, S_A_init, S_beta_init, Par, W_idx)
-%
-%   mu/S_mu_init are M-by-1 background rates/responsibility totals; A/beta and
-%   S_A_init/S_beta_init are M-by-M excitation strengths, decay rates, parent
-%   responsibility totals, and lag-weighted totals (target metric by parent).
-%   Empty initial statistics are allocated with these shapes. Returned
-%   parameters/statistics have the same shapes; the fifth output S_A preserves
-%   the excitation statistic formerly named S_a in this function.
-%   events/new_events and Par are M-by-1 cells of original event times and
-%   allowed parent/self metric indices. Only new_events contribute additional
-%   responsibilities; events provides their earlier parent/self history.
-%   Inputs are read-only; accumulated statistics and parameters are returned.
-%
-%   T is segment length; w is the original window's batch count. W_idx stores
-%   enhanced batch indices. The event-count cutoff retains the existing
-%   (W_idx(1)-1)*T expression even though events use original coordinates.
-%   max_iter/epsilon set the iteration cap/absolute convergence tolerance.
+% MODEL_UPDATER Update the anomaly model from newly sampled events.
+%   Section IV-F: Model Updater.
+%   Each E-step starts from S_mu_init/S_A_init/S_beta_init and adds the
+%   responsibilities of new_events using the complete available event history.
+%   The M-step updates parameter rows with new events; other rows are retained.
+%   This approximate incremental EM keeps accumulated statistics but uses
+%   window duration w*T and window event counts as update denominators.
+%   mu/S_mu are M-by-1; A/beta/S_A/S_beta are M-by-M (target by parent).
+%   events/new_events use original time; Par gives permitted parents and self.
+%   W_idx stores enhanced batch indices; (W_idx(1)-1)*T is the original-window
+%   left boundary. max_iter/epsilon control iteration count and convergence.
 
 total_T = w*T;
 

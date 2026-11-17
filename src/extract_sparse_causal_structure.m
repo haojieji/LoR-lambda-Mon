@@ -1,7 +1,7 @@
 function [r_B, r_Stru, r_Ord, r_IDX_root, r_IDX_intermedia] = ...
     extract_sparse_causal_structure(p_groups, p_numClusters, W)
 % EXTRACT_SPARSE_CAUSAL_STRUCTURE Discover dependencies within metric groups.
-%   Sparse Causal Structure Extractor, Step 2 (Section 4.1).
+%   Sparse Causal Structure Extractor, Step 2 (Section IV-A).
 %   W is M-by-N original training data. p_groups is M-by-1 with labels
 %   1:p_numClusters. Return M-by-M causal weights r_B and binary adjacency
 %   r_Stru in original metric coordinates: (m,p) denotes parent p -> child m.

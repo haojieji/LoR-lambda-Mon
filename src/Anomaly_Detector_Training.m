@@ -2,7 +2,7 @@ function [W, U_W, Omega_Cauchy_large, Omega_Cauchy_small, Cauchy_MEDIANs, Cauchy
     Anomaly_Detector_Training(W, U_W, SPIKE_LIMIT, DIP_LIMIT, Omega_Cauchy_large, ...
     Omega_Cauchy_small, Cauchy_Trans)
 % ANOMALY_DETECTOR_TRAINING Separate anomalies from training representations.
-%   Anomaly Detector (Section 4.1). W is M-by-N training data, N = T*H;
+%   Anomaly Detector (Section IV-A). W is M-by-N training data, N = T*H;
 %   U_W is T-by-H-by-M history; its columns flatten chronologically to W(m,:).
 %   SPIKE_LIMIT/DIP_LIMIT are scalar CDF cutoffs. Cauchy_Trans(values,median)
 %   is a shape-preserving transform. Input/output spike/dip masks are
