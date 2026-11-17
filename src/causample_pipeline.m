@@ -18,7 +18,7 @@ function [X_e_hat, X_e_hat_normal, Omega_e, Omega_r_e, Omega_L_e, Omega_Anomalie
 %   Omega_e/Omega_r_e/Omega_L_e/Omega_Anomalies_e record sampling indicators.
 %   Overhead_cputime_* stores CPU seconds; Times_sample uses elapsed seconds.
 %   See ../algorithm_overview.md for algorithm state and
-%   ../README.md#processing-time for timing scope and output conventions.
+%   ../README.md#outputs-and-evaluation for output definitions.
 
 [M, N] = size(X_e);
 num_batch = floor(N/T);

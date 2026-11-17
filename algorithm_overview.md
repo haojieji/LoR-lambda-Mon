@@ -31,4 +31,4 @@ These details describe the current implementation. Unlike commit `e13087b`, chil
 - **Parameter learning (IV-C/IV-F).** EM includes self-event weighting (`alpha=1.5`) and an offline diagonal adjustment (`gamma/eps` at the point of use). Online updates retain accumulated statistics but use window-based denominators; they are approximate incremental updates.
 - **Intensity evaluation.** Initial intensity subtracts original-time event indices from an enhanced-time current index. Candidate evaluation applies decay without saving the decayed excitation back to `G`. These retained calculations can affect anomaly predictions; documentation cleanup does not correct them.
 
-Output fields, evaluation metrics, and their measurement scope are defined in the [README](README.md#outputs-and-evaluation).
+Output fields and evaluation metrics are defined in the [README](README.md#outputs-and-evaluation).

@@ -96,8 +96,8 @@ for i = 1:M
 end
 
 % Sampling rate and NMAE are evaluated only after the training/enhancement
-% window. Sampling totals use the recorded indicators; see the known
-% coordinate limitation in ../README.md#sampling-ratio.
+% window. Sampling totals use the recorded indicators; see
+% ../README.md#outputs-and-evaluation for output definitions.
 test_range = w_size * T + 1 : num_batch * T;
 Omega_all = double(Omega_e | Omega_Anomalies_e);
 perf_sampleratio = sum(Omega_all(:, test_range), 'all') / ((num_batch - w_size) * T * M);

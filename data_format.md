@@ -34,4 +34,4 @@ For OB/SS, `X` is 54 × 700. The first 350 observations form training data. They
 
 Raw preprocessing is exposed as `data = preprocess_metric_data(dataMatrix, columnNames, dataset, params)`; it does not modify the caller's variables. The loader aligns names using retained indices. Only complete online batches enter `X_e`; the bundled inputs meet this requirement. Do not change `T`/`w` for prepared MAT files without rebuilding their embedded data.
 
-See the README for [input checks](README.md#input-checks), [parameter settings](README.md#parameters), and [outputs and evaluation](README.md#outputs-and-evaluation), including how the saved labels are used.
+See the README for [input checks](README.md#input-checks), [parameter settings](README.md#parameters), and [outputs and evaluation](README.md#outputs-and-evaluation).
