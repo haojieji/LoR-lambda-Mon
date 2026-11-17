@@ -85,13 +85,15 @@ Start with [CauSample.m](src/CauSample.m), which invokes [causample_pipeline.m](
 
 [causample_config.m](src/causample_config.m) defines shared settings. [causample_dataset_config.m](src/causample_dataset_config.m) then applies dataset-specific settings and overrides:
 
-| Dataset key | Batch length `T` | Training batches `w` | `theta_r` | `theta_c` |
+| Dataset key | Batch length `T` | Training batches `w` | Sampling coefficient for root metrics (`theta_r`) | Sampling coefficient for child metrics (`theta_c`) |
 | --- | ---: | ---: | ---: | ---: |
 | `tpc_c` | 100 | 23 | 5e-6 | 0.1 |
 | `online_boutique` | 50 | 7 | 5e-6 | 1 |
 | `sock_shop` | 50 | 7 | 5e-7 | 1e-4 |
 
-`theta_r` and `theta_c` scale root- and child-metric base budgets. For root metrics, self-embedding supplies overlapping training segments, and the small default `theta_r` values scale the resulting rank-based budgets. Temporal ranks and parent counts are inferred from the data and learned SCS rather than set as hyperparameters. The code's `w` corresponds to the paper's window size `W`.
+Following the sampling-coefficient convention in Section V-A (Parameter Settings), `theta_r` and `theta_c` absorb the effects of the sampling-bound parameters $\mu$, $c$, and $\delta$ into tunable coefficients for root and child metrics, respectively. They scale the corresponding base sample budgets to adjust sampling rates.
+
+For root metrics, self-embedding supplies overlapping training segments, and the small default sampling coefficients scale the resulting rank-based budgets. Temporal ranks and parent counts are inferred from the data and learned SCS rather than set as hyperparameters. The code's `w` corresponds to the paper's window size `W`.
 
 `yita` controls the residual tolerance in rank maintenance and reconstruction. `params.beta` counts recovery batches, distinct from the anomaly model's decay matrix. `SPIKE_LIMIT`/`DIP_LIMIT` set detection thresholds. ALS and anomaly-model iteration settings control their respective solvers. Set `visualization.enable = false` to disable plots.
 
