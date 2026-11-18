@@ -10,9 +10,6 @@ function varargout = Anomaly_Sampler(operation, varargin)
 %   anomaly_mu is M-by-1; anomaly_A/anomaly_beta/G are M-by-M (target by parent).
 %   Lambda stores intensities; Lambda_normalize divides by historical maxima.
 %   Composite_Sampler schedules and accepts candidates and records events.
-%   This snapshot retains the mixed-coordinate initial lag and the candidate
-%   update that decays intensity without replacing G with its decayed value;
-%   see ../algorithm_overview.md for the retained implementation details.
 
 switch operation
     case 'initial'

@@ -64,7 +64,7 @@ These checks load the inputs and verify source availability and basic dimensions
 
 | Dataset | Bundled input | Description |
 | --- | --- | --- |
-| TPC-C | [TPC_C_metrics_with_labels.csv.gz](dataset/TPC_C_metrics_with_labels.csv.gz) | Database metrics collected under a TPC Benchmark C workload; `prepare_causample_data` creates the MAT input. |
+| TPC-C | [TPC_C_metrics_with_labels.csv.gz](dataset/TPC_C_metrics_with_labels.csv.gz) | Database metrics collected under a TPC Benchmark C workload. |
 | Online Boutique (OB) | [BARO_OB_w7T50.mat](dataset/BARO_OB_w7T50.mat) | Metrics collected from the Online Boutique microservice application. |
 | Sock Shop (SS) | [BARO_SS_w7T50.mat](dataset/BARO_SS_w7T50.mat) | Metrics collected from the Sock Shop microservice application. |
 
@@ -72,14 +72,14 @@ OB/SS inputs originate from the [BARO artifact](https://github.com/phamquiluan/b
 
 ## Project guide
 
-Start with [CauSample.m](src/CauSample.m), which invokes [causample_pipeline.m](src/causample_pipeline.m). This README is the reference for running the project, configuring parameters, and interpreting outputs.
+This README covers running the project, configuring parameters, and interpreting outputs. The guides below provide further details.
 
 | Guide | Contents |
 | --- | --- |
 | [Source guide](src/README.md) | Paper-to-code mapping, supporting routines, and helper attribution |
-| [Algorithm overview](algorithm_overview.md) | Offline and online workflow, internal state, and implementation conventions |
+| [Algorithm overview](algorithm_overview.md) | Offline and online workflow and internal state |
 | [Data format and preprocessing](data_format.md) | Input schemas, preprocessing, embedded timelines, and saved MAT metadata |
-| [Dataset inventory](dataset/README.md) | Complete file list, provenance, and previews |
+| [Dataset inventory](dataset/README.md) | Complete file list and previews |
 
 ## Parameters
 

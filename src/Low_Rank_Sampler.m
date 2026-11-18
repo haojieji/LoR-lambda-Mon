@@ -11,7 +11,7 @@ function varargout = Low_Rank_Sampler(operation, varargin)
 %   sampled residuals by metric and batch. Only fully collected batches enter
 %   U_W. The budget uses theta_r or theta_c and is at least one sample.
 %   See README.md#paper-to-code-map for the component map and
-%   ../algorithm_overview.md for the budget convention.
+%   ../README.md#parameters for sampling-coefficient settings.
 
 switch operation
     case 'initialize'

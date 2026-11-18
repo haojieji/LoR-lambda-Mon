@@ -1,6 +1,6 @@
 # Source guide
 
-Start with [CauSample.m](CauSample.m), which loads configuration and data, invokes [causample_pipeline.m](causample_pipeline.m), and evaluates the output. The pipeline coordinates the components below; their names follow the ICDE manuscript.
+This guide maps the paper's components to their MATLAB source files. See the [quick start](../README.md#quick-start) for running the project and the [algorithm overview](../algorithm_overview.md) for workflow and internal state.
 
 ## Paper-to-code map
 
@@ -13,12 +13,11 @@ Start with [CauSample.m](CauSample.m), which loads configuration and data, invok
 | IV-D | Composite Sampler | [Composite_Sampler.m](Composite_Sampler.m) coordinates base/additional sampling; [generate_base_schedule.m](generate_base_schedule.m) generates base schedules. |
 | IV-E | Fine-Grained Reconstructor | [Fine_Grained_Reconstructor.m](Fine_Grained_Reconstructor.m) uses [fit_reconstruction_coefficients.m](fit_reconstruction_coefficients.m) and [augment_temporal_history.m](augment_temporal_history.m). |
 | IV-F | Model Updater | [Model_Updater.m](Model_Updater.m) updates the anomaly model from sampled events. |
-| V-A | Evaluation | [CauSample.m](CauSample.m) computes sampling/NMAE/timing summaries; [evaluate_anomaly_preservation.m](evaluate_anomaly_preservation.m) computes precision, recall, and F1. |
-
-This table maps component responsibilities, not a claim that every implementation expression equals a paper equation. See [workflow and implementation conventions](../algorithm_overview.md), and the README for [output and metric definitions](../README.md#outputs-and-evaluation).
+| V-A | Evaluation | [CauSample.m](CauSample.m) and [evaluate_anomaly_preservation.m](evaluate_anomaly_preservation.m); see [output and metric definitions](../README.md#outputs-and-evaluation). |
 
 ## Supporting files
 
+- **Entry point and orchestration:** [CauSample.m](CauSample.m) loads configuration and data, invokes [causample_pipeline.m](causample_pipeline.m), and returns the evaluated results.
 - **Configuration:** [causample_config.m](causample_config.m) and [causample_dataset_config.m](causample_dataset_config.m); see [parameter settings](../README.md#parameters).
 - **Data preparation:** [prepare_causample_data.m](prepare_causample_data.m) and [import_dataset_from_csv.m](import_dataset_from_csv.m) create the TPC-C input; [load_causample_dataset.m](load_causample_dataset.m) calls [preprocess_metric_data.m](preprocess_metric_data.m) for raw input.
 - **Input checks:** [validate_causample.m](validate_causample.m) and [test_causample.m](test_causample.m); see [check instructions and scope](../README.md#input-checks).
@@ -31,5 +30,3 @@ Retain each helper's source notice and applicable license:
 - Sparse representation and graph construction: `OMP_mat_func.m`, `ols3.m`, `BuildAdjacency.m`, `thrC.m`.
 - Clustering: `SpectralClustering_wo_n.m` cites Ng, Jordan, and Weiss; `litekmeans.m` retains Xi Peng's attribution and embedded notices. `cnormalize_inplace.m` and `vararginParser.m` retain Chong You's notices; `cnormalize.m` normalizes columns.
 - KernelICA: `contrast_ica.m` and `chol_gauss.m` retain Francis R. Bach's notices. The wrapper in `discover_causal_dependencies.m` credits Yasuhiro Sogawa and references Bach and Jordan.
-
-Unused historical ordering, permutation, and clustering-score helpers were removed from this working tree after a reference check. Their original contents and notices remain in the baseline Git history.
